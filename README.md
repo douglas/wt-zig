@@ -1,8 +1,8 @@
 # wt-zig
 
-`wt-zig` is a Zig-native port of [`/home/douglas/src/wt`](/home/douglas/src/wt), built incrementally instead of as a line-by-line Cobra rewrite.
+`wt-zig` is a Zig-native port of [`/home/douglas/src/wt`](/home/douglas/src/wt), built incrementally instead of as a line-by-line Cobra rewrite. The port is now complete under the repo's practical-parity standard: full command-surface coverage plus no Zig-only failures relative to the Go baseline on the maintained parity harness.
 
-The detailed phase history, verification patterns, and remaining gaps live in [docs/port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
+The detailed phase history, verification patterns, and completion criteria live in [docs/port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
 
 ## Current Scope
 
@@ -27,6 +27,8 @@ The current port now covers the full user-facing command surface from `wt`, incl
 - make `list` use `git worktree list --porcelain`
 - expose `wt config show` and `wt config path`, including effective pattern display
 - keep shared JSON/output, prompt, and git helpers factored for future maintenance
+
+Under the current completion bar, that command surface is considered finished when `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline. On this host, the accepted baseline is `Passed: 88`, `Failed: 2`, `Skipped: 4` for both binaries, with the two failing scenarios inherited from the Go baseline.
 
 ## Commands
 

@@ -21,6 +21,24 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `shellenv`
 - `init`
 
+## Port Complete
+
+The port is complete under the repo's practical-parity standard:
+
+- full current `wt` command-surface coverage in Zig
+- `zig build` and `zig build test` pass
+- `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
+
+The current accepted baseline on this host is:
+
+- Go harness result: `Passed: 88`, `Failed: 2`, `Skipped: 4`
+- Zig harness result: `Passed: 88`, `Failed: 2`, `Skipped: 4`
+
+The two remaining failing scenarios are inherited from the Go baseline in this environment and are not treated as open `wt-zig` gaps:
+
+- `config/config_show_defaults`
+- `init/init_uninstall`
+
 ## Implemented Architecture
 
 The port currently breaks down into these modules:
@@ -217,11 +235,9 @@ Useful smoke-test patterns that already proved valuable:
 - For PR/MR checkout, `git fetch origin <branch>` is not enough for every workflow; fallback refspec fetches matter for fork-style refs.
 - Root JSON output and command-local interactive behavior are easier to maintain when they are centralized in small shared helpers instead of duplicated inside each command.
 
-## Remaining Port Gaps
+## Remaining Work
 
-No intentional feature gaps remain versus the current Go CLI command surface.
-
-Any further work should be treated as:
+No intentional feature gaps remain versus the current Go CLI command surface. Any further work should be treated as post-completion polish:
 
 - bug-fix parity where Zig behavior diverges from Go in edge cases
 - platform polish, especially broader Windows/PowerShell verification
