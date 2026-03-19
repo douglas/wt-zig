@@ -133,6 +133,13 @@ Commit: `c1f3244`
 
 Commit: `240121a`
 
+### Phase 12: richer Unix init and shellenv
+
+- Expanded `wt init` with `--dry-run`, `--uninstall`, and `--no-prompt`.
+- Made `init` update existing marked blocks instead of only appending once.
+- Upgraded `wt shellenv` to include the JSON auto-cd guard plus bash/zsh completions.
+- Kept this slice Unix-only; PowerShell support remains a later phase.
+
 ## Verification Patterns
 
 The port has been verified repeatedly with both unit/build checks and temp-repo smoke tests.
@@ -173,16 +180,14 @@ Useful smoke-test patterns that already proved valuable:
 The major unported areas from the Go CLI are now smaller and more isolated:
 
 - richer `init` support:
-  - uninstall
-  - dry-run
-  - no-prompt / activation guidance
   - PowerShell support
 - richer `shellenv` output:
-  - completions
   - PowerShell shellenv
 - interactive flows:
   - branch/worktree selection for `checkout`, `remove`, `pr`, `mr`
   - confirmations where the Go CLI prompts
+- examples command
+- global JSON output mode
 - any remaining shell-install polish beyond the minimal Unix slice
 
 ## Codex Setup Notes
