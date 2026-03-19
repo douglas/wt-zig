@@ -24,5 +24,8 @@ test {
     std.testing.refAllDecls(@import("config.zig"));
     std.testing.refAllDecls(@import("path.zig"));
     std.testing.refAllDecls(@import("commands/config.zig"));
+    std.testing.refAllDecls(@import("commands/checkout.zig"));
+    std.testing.refAllDecls(@import("commands/create.zig"));
+    std.testing.refAllDecls(@import("git/repo.zig"));
     std.testing.refAllDecls(@import("git/worktree.zig"));
 }

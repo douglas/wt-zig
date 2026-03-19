@@ -2,6 +2,8 @@ const std = @import("std");
 const command = @import("command.zig");
 const config = @import("config.zig");
 const config_cmd = @import("commands/config.zig");
+const checkout_cmd = @import("commands/checkout.zig");
+const create_cmd = @import("commands/create.zig");
 const help_cmd = @import("commands/help.zig");
 const list_cmd = @import("commands/list.zig");
 const version_cmd = @import("commands/version.zig");
@@ -49,6 +51,8 @@ pub fn run(
         .version => version_cmd.run(args[1..], stdout, stderr),
         .list => list_cmd.run(allocator, args[1..], stdout, stderr),
         .config => config_cmd.run(args[1..], &loaded_config.resolved, stdout, stderr),
+        .checkout => checkout_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
+        .create => create_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
     };
 }
 

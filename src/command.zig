@@ -5,6 +5,8 @@ pub const Kind = enum {
     version,
     list,
     config,
+    checkout,
+    create,
 };
 
 pub const Spec = struct {
@@ -53,6 +55,24 @@ pub const all = [_]Spec{
         .summary = "Inspect resolved configuration values",
         .usage = "wt config <show|path>",
         .details = "Inspect the active config file path and effective configuration sources.",
+    },
+    .{
+        .kind = .checkout,
+        .name = "checkout",
+        .aliases = &.{"co"},
+        .display = "checkout, co",
+        .summary = "Create a worktree for an existing branch",
+        .usage = "wt checkout <branch>",
+        .details = "Create a new worktree for an existing branch using the configured path strategy.",
+    },
+    .{
+        .kind = .create,
+        .name = "create",
+        .aliases = &.{},
+        .display = "create",
+        .summary = "Create a new branch in a worktree",
+        .usage = "wt create <branch> [base-branch]",
+        .details = "Create a new branch and worktree using the configured path strategy.",
     },
 };
 
