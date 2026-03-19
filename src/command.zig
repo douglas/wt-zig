@@ -13,6 +13,7 @@ pub const Kind = enum {
     cleanup,
     pr,
     mr,
+    shellenv,
 };
 
 pub const Spec = struct {
@@ -133,6 +134,15 @@ pub const all = [_]Spec{
         .summary = "Checkout a GitLab merge request in a worktree",
         .usage = "wt mr <number|url>",
         .details = "Resolve a GitLab MR to its source branch with `glab` and reuse the checkout flow.",
+    },
+    .{
+        .kind = .shellenv,
+        .name = "shellenv",
+        .aliases = &.{},
+        .display = "shellenv",
+        .summary = "Print shell integration for automatic directory navigation",
+        .usage = "wt shellenv",
+        .details = "Emit a bash/zsh wrapper function that follows `wt navigating to:` markers after successful commands.",
     },
 };
 

@@ -15,10 +15,11 @@ The current slices keep the scope intentionally small:
 - run configured pre/post hooks for `checkout`, `create`, `remove`, `pr`, and `mr`
 - add non-interactive `remove`, `prune`, and merged-branch `cleanup` flows
 - add non-interactive `pr` and `mr` flows that resolve branches through `gh` and `glab`
+- add `shellenv` output for bash/zsh auto-`cd` integration
 - implement `help`, `version`, and `list`
 - make `list` use `git worktree list --porcelain`
 - expose `wt config show` and `wt config path`, including effective pattern display
-- leave clean seams for later interactive prompts, shell integration, migration, and richer remote features
+- leave clean seams for later interactive prompts, shell install flows, migration, and richer remote features
 
 ## Commands
 
@@ -36,6 +37,7 @@ wt prune
 wt cleanup
 wt pr <number|url>
 wt mr <number|url>
+wt shellenv
 wt info
 wt config show
 wt config path
