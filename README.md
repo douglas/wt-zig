@@ -11,6 +11,7 @@ The current slices keep the scope intentionally small:
 - add config loading with defaults, `WT_CONFIG`, `--config`, and env overrides
 - resolve effective worktree patterns from strategy aliases and custom templates
 - add non-interactive `checkout` and `create` flows on top of the path layer
+- add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
 - implement `help`, `version`, and `list`
 - make `list` use `git worktree list --porcelain`
 - expose `wt config show` and `wt config path`, including effective pattern display
@@ -26,6 +27,7 @@ wt ls
 wt checkout <branch>
 wt co <branch>
 wt create <branch> [base-branch]
+wt info
 wt config show
 wt config path
 ```

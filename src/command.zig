@@ -7,6 +7,7 @@ pub const Kind = enum {
     config,
     checkout,
     create,
+    info,
 };
 
 pub const Spec = struct {
@@ -73,6 +74,15 @@ pub const all = [_]Spec{
         .summary = "Create a new branch in a worktree",
         .usage = "wt create <branch> [base-branch]",
         .details = "Create a new branch and worktree using the configured path strategy.",
+    },
+    .{
+        .kind = .info,
+        .name = "info",
+        .aliases = &.{},
+        .display = "info",
+        .summary = "Show resolved worktree configuration and strategy details",
+        .usage = "wt info",
+        .details = "Display the active config path, effective pattern, strategy catalog, and configured hooks.",
     },
 };
 

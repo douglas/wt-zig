@@ -23,16 +23,16 @@ pub fn run(
     for (result.entries) |entry| {
         try stdout.writeAll(entry.path);
 
+        if (entry.head) |head| {
+            try stdout.print(" {s}", .{head});
+        }
+
         if (entry.branch) |branch| {
             try stdout.print(" [{s}]", .{branch});
         } else if (entry.detached) {
             try stdout.writeAll(" [detached]");
         } else if (entry.bare) {
             try stdout.writeAll(" [bare]");
-        }
-
-        if (entry.head) |head| {
-            try stdout.print(" {s}", .{head});
         }
 
         if (entry.locked) |reason| {
