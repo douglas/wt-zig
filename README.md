@@ -3,6 +3,8 @@
 `wt-zig` is a Zig-native port of [`/home/douglas/src/wt`](/home/douglas/src/wt), built incrementally instead of as a line-by-line Cobra rewrite. The port is now complete under the repo's practical-parity standard: full command-surface coverage plus no Zig-only failures relative to the Go baseline on the maintained parity harness.
 
 The detailed phase history, verification patterns, and completion criteria live in [docs/port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
+For a practical comparison of the Go and Zig implementations, see [docs/comparison.md](/home/douglas/src/wt-zig/docs/comparison.md).
+For the maintainer-facing architecture and code-quality rules, see [docs/architecture.md](/home/douglas/src/wt-zig/docs/architecture.md).
 
 ## Current Scope
 
@@ -61,11 +63,13 @@ wt --format json <command>
 
 ```text
 zig build
+zig build check
 zig build run -- help
 zig build run -- version
 zig build run -- list
 zig build run -- config show
 zig build test
+zig build parity
 zig fmt --check .
 ./scripts/parity-harness.sh
 ```

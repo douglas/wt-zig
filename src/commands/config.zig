@@ -3,7 +3,7 @@ const config = @import("../config.zig");
 const output = @import("../output.zig");
 const path = @import("../path.zig");
 
-pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
     if (args.len == 0) {
         try printHelp(stdout);
         return 0;
@@ -11,10 +11,10 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
 
     if (std.mem.eql(u8, args[0], "show")) {
         if (args.len != 1) {
-            return output.usageError(stdout, stderr, "wt config show", "Usage: wt config show");
+            return output.usageError(ctx, stdout, stderr, "wt config show", "Usage: wt config show");
         }
-        if (output.isJson()) {
-            try printShowJson(std.heap.page_allocator, cfg, stdout);
+        if (output.isJson(ctx)) {
+            try printShowJson(ctx, cfg, stdout);
         } else {
             try printShow(cfg, stdout);
         }
@@ -23,10 +23,10 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
 
     if (std.mem.eql(u8, args[0], "path")) {
         if (args.len != 1) {
-            return output.usageError(stdout, stderr, "wt config path", "Usage: wt config path");
+            return output.usageError(ctx, stdout, stderr, "wt config path", "Usage: wt config path");
         }
-        if (output.isJson()) {
-            try output.emitSuccess(std.heap.page_allocator, stdout, "wt config path", .{ .path = cfg.config_file_path });
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config path", .{ .path = cfg.config_file_path });
         } else {
             try stdout.print("{s}\n", .{cfg.config_file_path});
         }
@@ -35,15 +35,15 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
 
     if (std.mem.eql(u8, args[0], "init")) {
         const force = parseInitForce(args[1..]) catch {
-            return output.usageError(stdout, stderr, "wt config init", "Usage: wt config init [--force]");
+            return output.usageError(ctx, stdout, stderr, "wt config init", "Usage: wt config init [--force]");
         };
 
-        config.writeDefaultConfig(cfg.config_file_path, force) catch |err| switch (err) {
+        config.writeDefaultConfig(ctx.allocator, cfg.config_file_path, force) catch |err| switch (err) {
             error.ConfigFileAlreadyExists => {
-                if (output.isJson()) {
-                    const message = try std.fmt.allocPrint(std.heap.page_allocator, "config file already exists: {s}", .{cfg.config_file_path});
-                    defer std.heap.page_allocator.free(message);
-                    try output.emitError(stdout, "wt config init", message);
+                if (output.isJson(ctx)) {
+                    const message = try std.fmt.allocPrint(ctx.allocator, "config file already exists: {s}", .{cfg.config_file_path});
+                    defer ctx.allocator.free(message);
+                    try output.emitError(ctx, stdout, "wt config init", message);
                 } else {
                     try stderr.print("config file already exists: {s}\n", .{cfg.config_file_path});
                 }
@@ -52,8 +52,8 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
             else => return err,
         };
 
-        if (output.isJson()) {
-            try output.emitSuccess(std.heap.page_allocator, stdout, "wt config init", .{
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config init", .{
                 .path = cfg.config_file_path,
                 .status = "created",
             });
@@ -63,10 +63,10 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
         return 0;
     }
 
-    if (output.isJson()) {
-        const message = try std.fmt.allocPrint(std.heap.page_allocator, "Unknown config command: {s}", .{args[0]});
-        defer std.heap.page_allocator.free(message);
-        try output.emitError(stdout, "wt config", message);
+    if (output.isJson(ctx)) {
+        const message = try std.fmt.allocPrint(ctx.allocator, "Unknown config command: {s}", .{args[0]});
+        defer ctx.allocator.free(message);
+        try output.emitError(ctx, stdout, "wt config", message);
     } else {
         try stderr.print("Unknown config command: {s}\n\n", .{args[0]});
         try printHelp(stderr);
@@ -123,12 +123,12 @@ pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
     );
 }
 
-fn printShowJson(allocator: std.mem.Allocator, cfg: *const config.Resolved, stdout: anytype) !void {
+fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: anytype) !void {
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "(none)";
     const pattern_source = if (pattern_info) |info| info.source else cfg.sources.pattern;
 
-    try output.emitSuccess(allocator, stdout, "wt config show", .{
+    try output.emitSuccess(ctx, stdout, "wt config show", .{
         .config_file = .{
             .path = cfg.config_file_path,
             .status = if (cfg.config_file_found) "found" else "not found",

@@ -22,12 +22,13 @@ pub const Outcome = struct {
 };
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     var branch: []const u8 = undefined;
     var owned_branches: ?[][]u8 = null;
     defer if (owned_branches) |branches| {
@@ -37,9 +38,9 @@ pub fn run(
 
     switch (args.len) {
         0 => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = "wt checkout with --format json requires an explicit branch argument";
-                try output.emitError(stdout, "wt checkout", message);
+                try output.emitError(ctx, stdout, "wt checkout", message);
                 return 1;
             }
 
@@ -66,23 +67,23 @@ pub fn run(
             branch = selection.value;
         },
         1 => branch = args[0],
-        else => return output.usageError(stdout, stderr, "wt checkout", "Usage: wt checkout [branch]"),
+        else => return output.usageError(ctx, stdout, stderr, "wt checkout", "Usage: wt checkout [branch]"),
     }
 
     const outcome = checkoutBranch(allocator, cfg, branch, .{}, stderr) catch |err| switch (err) {
         error.BranchDoesNotExist => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch", .{ branch, branch });
                 defer allocator.free(message);
-                try output.emitError(stdout, "wt checkout", message);
+                try output.emitError(ctx, stdout, "wt checkout", message);
             } else {
                 try stderr.print("branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch\n", .{ branch, branch });
             }
             return 1;
         },
         error.HookCommandFailed => {
-            if (output.isJson()) {
-                try output.emitError(stdout, "wt checkout", "pre-checkout hook failed");
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt checkout", "pre-checkout hook failed");
             } else {
                 try stderr.writeAll("pre-checkout hook failed\n");
             }
@@ -93,8 +94,8 @@ pub fn run(
     };
     defer allocator.free(outcome.path);
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt checkout", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt checkout", .{
             .status = if (outcome.existed) "exists" else "created",
             .branch = branch,
             .path = outcome.path,
@@ -220,17 +221,18 @@ fn runGitWorktreeAdd(
     try args.appendSlice(allocator, trailing_args);
     const owned = try args.toOwnedSlice(allocator);
     defer allocator.free(owned);
-    return runGitCommand(owned, "failed to create worktree", stderr);
+    return runGitCommand(allocator, owned, "failed to create worktree", stderr);
 }
 
 fn runGitCommand(
+    allocator: std.mem.Allocator,
     argv: []const []const u8,
     failure_prefix: []const u8,
     stderr: anytype,
 ) !bool {
-    const result = try runGitCommandResult(std.heap.page_allocator, argv);
-    defer std.heap.page_allocator.free(result.stdout);
-    defer std.heap.page_allocator.free(result.stderr);
+    const result = try runGitCommandResult(allocator, argv);
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
 
     if (result.success) return true;
     const message = std.mem.trim(u8, result.stderr, " \r\n\t");

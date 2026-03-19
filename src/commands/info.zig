@@ -3,15 +3,15 @@ const config = @import("../config.zig");
 const output = @import("../output.zig");
 const path = @import("../path.zig");
 
-pub fn run(cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
     _ = stderr;
 
     const config_status = if (cfg.config_file_found) "found" else "not found, using defaults";
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "unknown";
 
-    if (output.isJson()) {
-        try output.emitSuccess(std.heap.page_allocator, stdout, "wt info", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt info", .{
             .config = .{
                 .path = cfg.config_file_path,
                 .status = config_status,

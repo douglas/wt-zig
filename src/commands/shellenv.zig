@@ -2,13 +2,13 @@ const builtin = @import("builtin");
 const std = @import("std");
 const output = @import("../output.zig");
 
-pub fn run(args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
     if (args.len != 0) {
-        return output.usageError(stdout, stderr, "wt shellenv", "Usage: wt shellenv");
+        return output.usageError(ctx, stdout, stderr, "wt shellenv", "Usage: wt shellenv");
     }
 
-    if (output.isJson()) {
-        try output.emitSuccess(std.heap.page_allocator, stdout, "wt shellenv", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt shellenv", .{
             .note = "shellenv outputs shell script text; run without --format json to source it",
         });
         return 0;
@@ -222,7 +222,11 @@ test "shellenv includes json guard and completion blocks" {
     var stdout = stdout_buffer.writer(allocator);
     var stderr = stderr_buffer.writer(allocator);
 
-    const exit_code = try run(&.{}, &stdout, &stderr);
+    const ctx = output.Context{
+        .allocator = allocator,
+        .format = .text,
+    };
+    const exit_code = try run(ctx, &.{}, &stdout, &stderr);
     try std.testing.expectEqual(@as(u8, 0), exit_code);
     if (builtin.os.tag == .windows) {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Register-ArgumentCompleter") != null);

@@ -18,14 +18,15 @@ const ParsedArgs = struct {
 };
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
-        return output.usageError(stdout, stderr, "wt remove", "Usage: wt remove [branch] [--force|-f]");
+        return output.usageError(ctx, stdout, stderr, "wt remove", "Usage: wt remove [branch] [--force|-f]");
     };
 
     var branch = parsed.branch;
@@ -36,8 +37,8 @@ pub fn run(
     };
 
     if (branch == null) {
-        if (output.isJson()) {
-            try output.emitError(stdout, "wt remove", "wt remove with --format json requires an explicit branch argument");
+        if (output.isJson(ctx)) {
+            try output.emitError(ctx, stdout, "wt remove", "wt remove with --format json requires an explicit branch argument");
             return 1;
         }
 
@@ -66,26 +67,26 @@ pub fn run(
 
     const outcome = removeWorktree(allocator, cfg, branch.?, parsed.force, stderr) catch |err| switch (err) {
         error.NoSuchWorktree => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "no worktree found for branch: {s}", .{branch.?});
                 defer allocator.free(message);
-                try output.emitError(stdout, "wt remove", message);
+                try output.emitError(ctx, stdout, "wt remove", message);
             } else {
                 try stderr.print("no worktree found for branch: {s}\n", .{branch.?});
             }
             return 1;
         },
         error.CannotRemoveMainWorktree => {
-            if (output.isJson()) {
-                try output.emitError(stdout, "wt remove", "cannot remove the main worktree");
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt remove", "cannot remove the main worktree");
             } else {
                 try stderr.writeAll("cannot remove the main worktree\n");
             }
             return 1;
         },
         error.HookCommandFailed => {
-            if (output.isJson()) {
-                try output.emitError(stdout, "wt remove", "pre-remove hook failed");
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt remove", "pre-remove hook failed");
             } else {
                 try stderr.writeAll("pre-remove hook failed\n");
             }
@@ -97,8 +98,8 @@ pub fn run(
     defer allocator.free(outcome.path);
     defer if (outcome.navigate_to) |navigate_to| allocator.free(navigate_to);
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt remove", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt remove", .{
             .status = "removed",
             .branch = branch.?,
             .path = outcome.path,
@@ -143,7 +144,7 @@ pub fn removeWorktree(
     const success = try runGitRemove(allocator, existing_path, force, stderr);
     if (!success) return error.GitCommandFailed;
 
-    path_mod.cleanupWorktreePath(cfg, existing_path) catch |err| {
+    path_mod.cleanupWorktreePath(allocator, cfg, existing_path) catch |err| {
         try stderr.print(
             "warning: failed to clean removed worktree path {s}: {s}\n",
             .{ existing_path, @errorName(err) },

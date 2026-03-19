@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("config.zig");
+const fs = @import("fs.zig");
 
 pub const RepoInfo = struct {
     main: []const u8,
@@ -117,11 +118,11 @@ pub fn buildWorktreePath(
     errdefer allocator.free(rendered);
 
     const parent = std.fs.path.dirname(rendered) orelse return error.InvalidRenderedPath;
-    try makePathAbsolute(parent);
+    try fs.ensureDir(allocator, parent);
     return rendered;
 }
 
-pub fn cleanupWorktreePath(cfg: *const config.Resolved, worktree_path: []const u8) !void {
+pub fn cleanupWorktreePath(allocator: std.mem.Allocator, cfg: *const config.Resolved, worktree_path: []const u8) !void {
     if (worktree_path.len == 0) return;
 
     std.fs.deleteTreeAbsolute(worktree_path) catch |err| switch (err) {
@@ -129,11 +130,11 @@ pub fn cleanupWorktreePath(cfg: *const config.Resolved, worktree_path: []const u
         else => return err,
     };
 
-    const abs_root = try std.fs.path.resolve(std.heap.page_allocator, &.{cfg.root});
-    defer std.heap.page_allocator.free(abs_root);
+    const abs_root = try std.fs.path.resolve(allocator, &.{cfg.root});
+    defer allocator.free(abs_root);
 
-    const abs_worktree = try std.fs.path.resolve(std.heap.page_allocator, &.{worktree_path});
-    defer std.heap.page_allocator.free(abs_worktree);
+    const abs_worktree = try std.fs.path.resolve(allocator, &.{worktree_path});
+    defer allocator.free(abs_worktree);
 
     const parent = std.fs.path.dirname(abs_worktree) orelse return;
     if (!isWithinRoot(abs_root, parent)) return;
@@ -159,31 +160,6 @@ fn isWithinRoot(root: []const u8, candidate: []const u8) bool {
     if (candidate.len == root.len) return true;
     if (root.len == 0) return false;
     return root[root.len - 1] == std.fs.path.sep or candidate[root.len] == std.fs.path.sep;
-}
-
-fn makePathAbsolute(pathname: []const u8) !void {
-    if (!std.fs.path.isAbsolute(pathname)) {
-        return std.fs.cwd().makePath(pathname);
-    }
-
-    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
-
-    var current = std.ArrayList(u8).empty;
-    defer current.deinit(std.heap.page_allocator);
-    try current.append(std.heap.page_allocator, std.fs.path.sep);
-
-    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
-    while (parts.next()) |part| {
-        if (part.len == 0) continue;
-        if (current.items.len > 1) {
-            try current.append(std.heap.page_allocator, std.fs.path.sep);
-        }
-        try current.appendSlice(std.heap.page_allocator, part);
-        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-    }
 }
 
 fn resolveToken(
@@ -407,7 +383,7 @@ test "cleanupWorktreePath removes empty parent directory inside root" {
         },
     };
 
-    try cleanupWorktreePath(&cfg, worktree_path);
+    try cleanupWorktreePath(allocator, &cfg, worktree_path);
 
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(repo_dir, .{}));
 }

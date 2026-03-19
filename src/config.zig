@@ -1,4 +1,5 @@
 const builtin = @import("builtin");
+const fs = @import("fs.zig");
 const std = @import("std");
 
 pub const Hooks = struct {
@@ -132,7 +133,7 @@ pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
         },
     };
 
-    if (fileExists(config_path)) {
+    if (fs.fileExists(config_path)) {
         resolved.config_file_found = true;
         const parsed = try parseFile(arena_allocator, config_path);
         try applyParsedFile(arena_allocator, &resolved, parsed, home);
@@ -164,12 +165,9 @@ pub fn resolveConfigPath(
     return std.fs.path.join(allocator, &.{ dir, "config.toml" });
 }
 
-pub fn writeDefaultConfig(path: []const u8, force: bool) !void {
-    if (fileExists(path) and !force) return error.ConfigFileAlreadyExists;
-
-    const dir = std.fs.path.dirname(path) orelse return error.InvalidConfigPath;
-    try makePathAbsolute(dir);
-    try writeFileAbsolute(path, default_config_template);
+pub fn writeDefaultConfig(allocator: std.mem.Allocator, path: []const u8, force: bool) !void {
+    if (fs.fileExists(path) and !force) return error.ConfigFileAlreadyExists;
+    try fs.writeFile(allocator, path, default_config_template);
 }
 
 pub fn configDir(allocator: std.mem.Allocator, env_map: *const std.process.EnvMap) ![]const u8 {
@@ -344,46 +342,6 @@ fn asciiLowerAlloc(allocator: std.mem.Allocator, input: []const u8) ![]const u8 
     return buffer;
 }
 
-fn fileExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
-    return true;
-}
-
-fn makePathAbsolute(pathname: []const u8) !void {
-    if (!std.fs.path.isAbsolute(pathname)) {
-        return std.fs.cwd().makePath(pathname);
-    }
-
-    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
-
-    var current = std.ArrayList(u8).empty;
-    defer current.deinit(std.heap.page_allocator);
-    try current.append(std.heap.page_allocator, std.fs.path.sep);
-
-    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
-    while (parts.next()) |part| {
-        if (part.len == 0) continue;
-        if (current.items.len > 1) {
-            try current.append(std.heap.page_allocator, std.fs.path.sep);
-        }
-        try current.appendSlice(std.heap.page_allocator, part);
-        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-    }
-}
-
-fn writeFileAbsolute(path: []const u8, contents: []const u8) !void {
-    if (!std.fs.path.isAbsolute(path)) {
-        return std.fs.cwd().writeFile(.{ .sub_path = path, .data = contents });
-    }
-
-    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
-    defer file.close();
-    try file.writeAll(contents);
-}
-
 test "resolveConfigPath prefers flag then env then default" {
     var env = std.process.EnvMap.init(std.testing.allocator);
     defer env.deinit();
@@ -486,7 +444,7 @@ test "writeDefaultConfig creates parent directories and file" {
     const config_path = try std.fs.path.join(allocator, &.{ root, "nested", "wt", "config.toml" });
     defer allocator.free(config_path);
 
-    try writeDefaultConfig(config_path, false);
+    try writeDefaultConfig(allocator, config_path, false);
 
     const data = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
     defer allocator.free(data);
@@ -504,6 +462,6 @@ test "writeDefaultConfig refuses to overwrite existing file" {
     const config_path = try std.fs.path.join(allocator, &.{ root, "config.toml" });
     defer allocator.free(config_path);
 
-    try writeFileAbsolute(config_path, "existing\n");
-    try std.testing.expectError(error.ConfigFileAlreadyExists, writeDefaultConfig(config_path, false));
+    try fs.writeFile(allocator, config_path, "existing\n");
+    try std.testing.expectError(error.ConfigFileAlreadyExists, writeDefaultConfig(allocator, config_path, false));
 }

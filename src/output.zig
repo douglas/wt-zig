@@ -5,18 +5,13 @@ pub const Format = enum {
     json,
 };
 
-var current_format: Format = .text;
+pub const Context = struct {
+    allocator: std.mem.Allocator,
+    format: Format,
+};
 
-pub fn setFormat(format: Format) void {
-    current_format = format;
-}
-
-pub fn getFormat() Format {
-    return current_format;
-}
-
-pub fn isJson() bool {
-    return current_format == .json;
+pub fn isJson(ctx: Context) bool {
+    return ctx.format == .json;
 }
 
 pub fn parseFormat(raw: []const u8) !Format {
@@ -27,14 +22,14 @@ pub fn parseFormat(raw: []const u8) !Format {
 }
 
 pub fn emitSuccess(
-    allocator: std.mem.Allocator,
+    ctx: Context,
     stdout: anytype,
     command: []const u8,
     data: anytype,
 ) !void {
-    if (!isJson()) return;
-    const json_value = try std.json.Stringify.valueAlloc(allocator, data, .{ .emit_null_optional_fields = false });
-    defer allocator.free(json_value);
+    if (!isJson(ctx)) return;
+    const json_value = try std.json.Stringify.valueAlloc(ctx.allocator, data, .{ .emit_null_optional_fields = false });
+    defer ctx.allocator.free(json_value);
     try stdout.writeAll("{\"ok\":true,\"command\":");
     try writeQuoted(stdout, command);
     try stdout.writeAll(",\"data\":");
@@ -42,8 +37,8 @@ pub fn emitSuccess(
     try stdout.writeAll("}\n");
 }
 
-pub fn emitError(stdout: anytype, command: []const u8, message: []const u8) !void {
-    if (!isJson()) return;
+pub fn emitError(ctx: Context, stdout: anytype, command: []const u8, message: []const u8) !void {
+    if (!isJson(ctx)) return;
     try stdout.writeAll("{\"ok\":false,\"command\":");
     try writeQuoted(stdout, command);
     try stdout.writeAll(",\"error\":");
@@ -51,9 +46,9 @@ pub fn emitError(stdout: anytype, command: []const u8, message: []const u8) !voi
     try stdout.writeAll("}\n");
 }
 
-pub fn usageError(stdout: anytype, stderr: anytype, command: []const u8, message: []const u8) !u8 {
-    if (isJson()) {
-        try emitError(stdout, command, message);
+pub fn usageError(ctx: Context, stdout: anytype, stderr: anytype, command: []const u8, message: []const u8) !u8 {
+    if (isJson(ctx)) {
+        try emitError(ctx, stdout, command, message);
     } else {
         try stderr.print("{s}\n", .{message});
     }
@@ -61,16 +56,16 @@ pub fn usageError(stdout: anytype, stderr: anytype, command: []const u8, message
 }
 
 pub fn commandHelp(
-    allocator: std.mem.Allocator,
+    ctx: Context,
     stdout: anytype,
     command: []const u8,
     help_text: []const u8,
 ) !void {
-    if (!isJson()) {
+    if (!isJson(ctx)) {
         try stdout.writeAll(help_text);
         return;
     }
-    try emitSuccess(allocator, stdout, command, .{ .help = help_text });
+    try emitSuccess(ctx, stdout, command, .{ .help = help_text });
 }
 
 fn writeQuoted(writer: anytype, value: []const u8) !void {
@@ -100,14 +95,16 @@ test "parseFormat accepts text and json" {
 
 test "emitSuccess writes json envelope" {
     const allocator = std.testing.allocator;
-    setFormat(.json);
-    defer setFormat(.text);
+    const ctx = Context{
+        .allocator = allocator,
+        .format = .json,
+    };
 
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
     var writer = buffer.writer(allocator);
 
-    try emitSuccess(allocator, &writer, "wt version", .{ .version = "1.2.3" });
+    try emitSuccess(ctx, &writer, "wt version", .{ .version = "1.2.3" });
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"ok\":true") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"command\":\"wt version\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"version\":\"1.2.3\"") != null);

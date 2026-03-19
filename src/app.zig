@@ -36,54 +36,56 @@ pub fn run(
         return 1;
     };
     defer parsed.deinit(allocator);
-    output.setFormat(parsed.output_format);
-    defer output.setFormat(.text);
+    const ctx = output.Context{
+        .allocator = allocator,
+        .format = parsed.output_format,
+    };
     const args = parsed.positional;
 
     var loaded_config = try config.load(allocator, .{ .cli_config_path = parsed.cli_config_path });
     defer loaded_config.deinit();
 
     if (parsed.root_help or args.len == 0 or isHelpFlag(args[0])) {
-        try help_cmd.printRoot(allocator, &loaded_config.resolved, stdout);
+        try help_cmd.printRoot(ctx, &loaded_config.resolved, stdout);
         return 0;
     }
 
     if (std.mem.eql(u8, args[0], "help")) {
-        return help_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr);
+        return help_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr);
     }
 
     const spec = command.find(args[0]) orelse {
-        if (output.isJson()) {
+        if (output.isJson(ctx)) {
             try stderr.print("unknown command \"{s}\" for \"wt\"\n", .{args[0]});
         } else {
             try stderr.print("Unknown command: {s}\n\n", .{args[0]});
-            try help_cmd.printRoot(allocator, &loaded_config.resolved, stderr);
+            try help_cmd.printRoot(ctx, &loaded_config.resolved, stderr);
         }
         return 1;
     };
 
     if (args.len > 1 and isHelpFlag(args[1])) {
-        try help_cmd.printCommand(allocator, spec, stdout);
+        try help_cmd.printCommand(ctx, spec, stdout);
         return 0;
     }
 
     return switch (spec.kind) {
-        .help => help_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .version => version_cmd.run(args[1..], stdout, stderr),
-        .list => list_cmd.run(allocator, args[1..], stdout, stderr),
-        .config => config_cmd.run(args[1..], &loaded_config.resolved, stdout, stderr),
-        .checkout => checkout_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .create => create_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .info => info_cmd.run(&loaded_config.resolved, stdout, stderr),
-        .remove => remove_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .prune => prune_cmd.run(allocator, args[1..], stdout, stderr),
-        .cleanup => cleanup_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .migrate => migrate_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .pr => pr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .mr => mr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
-        .examples => examples_cmd.run(args[1..], stdout, stderr),
-        .shellenv => shellenv_cmd.run(args[1..], stdout, stderr),
-        .init => init_cmd.run(allocator, args[1..], stdout, stderr),
+        .help => help_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .version => version_cmd.run(ctx, args[1..], stdout, stderr),
+        .list => list_cmd.run(ctx, args[1..], stdout, stderr),
+        .config => config_cmd.run(ctx, args[1..], &loaded_config.resolved, stdout, stderr),
+        .checkout => checkout_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .create => create_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .info => info_cmd.run(ctx, &loaded_config.resolved, stdout, stderr),
+        .remove => remove_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .prune => prune_cmd.run(ctx, args[1..], stdout, stderr),
+        .cleanup => cleanup_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .migrate => migrate_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .pr => pr_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .mr => mr_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .examples => examples_cmd.run(ctx, args[1..], stdout, stderr),
+        .shellenv => shellenv_cmd.run(ctx, args[1..], stdout, stderr),
+        .init => init_cmd.run(ctx, args[1..], stdout, stderr),
     };
 }
 

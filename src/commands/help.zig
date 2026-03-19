@@ -5,40 +5,40 @@ const output = @import("../output.zig");
 const path = @import("../path.zig");
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
     if (args.len == 0) {
-        try printRoot(allocator, cfg, stdout);
+        try printRoot(ctx, cfg, stdout);
         return 0;
     }
 
     if (args.len > 1) {
-        return output.usageError(stdout, stderr, "wt help", "Usage: wt help [command]");
+        return output.usageError(ctx, stdout, stderr, "wt help", "Usage: wt help [command]");
     }
 
     const spec = command.find(args[0]) orelse {
-        if (output.isJson()) {
-            const message = try std.fmt.allocPrint(allocator, "Unknown command: {s}", .{args[0]});
-            defer allocator.free(message);
-            try output.emitError(stdout, "wt help", message);
+        if (output.isJson(ctx)) {
+            const message = try std.fmt.allocPrint(ctx.allocator, "Unknown command: {s}", .{args[0]});
+            defer ctx.allocator.free(message);
+            try output.emitError(ctx, stdout, "wt help", message);
         } else {
             try stderr.print("Unknown command: {s}\n", .{args[0]});
         }
         return 1;
     };
 
-    try printCommand(allocator, spec, stdout);
+    try printCommand(ctx, spec, stdout);
     return 0;
 }
 
-pub fn printRoot(allocator: std.mem.Allocator, cfg: *const config.Resolved, writer: anytype) !void {
+pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: anytype) !void {
     var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(allocator);
-    var buffered = buffer.writer(allocator);
+    defer buffer.deinit(ctx.allocator);
+    var buffered = buffer.writer(ctx.allocator);
     const pattern = blk: {
         const resolved = path.resolvePattern(cfg) catch break :blk cfg.pattern;
         break :blk resolved.pattern;
@@ -86,13 +86,13 @@ pub fn printRoot(allocator: std.mem.Allocator, cfg: *const config.Resolved, writ
         \\
     , .{ cfg.strategy, pattern, cfg.root });
 
-    try output.commandHelp(allocator, writer, "wt", buffer.items);
+    try output.commandHelp(ctx, writer, "wt", buffer.items);
 }
 
-pub fn printCommand(allocator: std.mem.Allocator, spec: *const command.Spec, writer: anytype) !void {
+pub fn printCommand(ctx: output.Context, spec: *const command.Spec, writer: anytype) !void {
     var buffer = std.ArrayList(u8).empty;
-    defer buffer.deinit(allocator);
-    var buffered = buffer.writer(allocator);
+    defer buffer.deinit(ctx.allocator);
+    var buffered = buffer.writer(ctx.allocator);
 
     try buffered.print(
         \\{s}
@@ -115,7 +115,7 @@ pub fn printCommand(allocator: std.mem.Allocator, spec: *const command.Spec, wri
         try buffered.writeByte('\n');
     }
 
-    const command_name = try std.fmt.allocPrint(allocator, "wt {s}", .{spec.name});
-    defer allocator.free(command_name);
-    try output.commandHelp(allocator, writer, command_name, buffer.items);
+    const command_name = try std.fmt.allocPrint(ctx.allocator, "wt {s}", .{spec.name});
+    defer ctx.allocator.free(command_name);
+    try output.commandHelp(ctx, writer, command_name, buffer.items);
 }

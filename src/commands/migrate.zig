@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const fs = @import("../fs.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
@@ -41,14 +42,15 @@ const ResultItem = struct {
 };
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
-        return output.usageError(stdout, stderr, "wt migrate", "Usage: wt migrate [--force|-f]");
+        return output.usageError(ctx, stdout, stderr, "wt migrate", "Usage: wt migrate [--force|-f]");
     };
 
     var env_map = try std.process.getEnvMap(allocator);
@@ -63,7 +65,7 @@ pub fn run(
     const plan = try buildMigratePlan(allocator, cfg, info, listed.entries, &env_map, parsed.force);
     defer freePlan(allocator, plan);
 
-    return applyMigratePlan(allocator, parsed.force, plan, stdout, stderr);
+    return applyMigratePlan(ctx, parsed.force, plan, stdout, stderr);
 }
 
 pub fn buildMigratePlan(
@@ -220,12 +222,13 @@ fn planItemForTarget(
 }
 
 fn applyMigratePlan(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     force: bool,
     plan: []const PlanItem,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     var moved: usize = 0;
     var skipped: usize = 0;
     var failed: usize = 0;
@@ -238,7 +241,7 @@ fn applyMigratePlan(
         switch (item.action) {
             .skip => {
                 skipped += 1;
-                if (!output.isJson()) try stdout.print("Skipped primary checkout: {s}\n", .{item.reason});
+                if (!output.isJson(ctx)) try stdout.print("Skipped primary checkout: {s}\n", .{item.reason});
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -251,7 +254,7 @@ fn applyMigratePlan(
             .move, .move_force => {
                 movePrimaryCheckout(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
                     failed += 1;
-                    if (!output.isJson()) try stdout.print("Failed primary checkout: {s}\n", .{@errorName(err)});
+                    if (!output.isJson(ctx)) try stdout.print("Failed primary checkout: {s}\n", .{@errorName(err)});
                     try results.append(allocator, .{
                         .branch = item.branch,
                         .from = item.from,
@@ -264,7 +267,7 @@ fn applyMigratePlan(
                 };
 
                 moved += 1;
-                if (!output.isJson()) try stdout.print("Moved primary checkout: {s} -> {s}\n", .{ item.from, item.to.? });
+                if (!output.isJson(ctx)) try stdout.print("Moved primary checkout: {s} -> {s}\n", .{ item.from, item.to.? });
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -283,7 +286,7 @@ fn applyMigratePlan(
         switch (item.action) {
             .skip => {
                 skipped += 1;
-                if (!output.isJson()) try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
+                if (!output.isJson(ctx)) try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -296,7 +299,7 @@ fn applyMigratePlan(
             .move, .move_force => {
                 moveLinkedWorktree(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
                     failed += 1;
-                    if (!output.isJson()) try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
+                    if (!output.isJson(ctx)) try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
                     try results.append(allocator, .{
                         .branch = item.branch,
                         .from = item.from,
@@ -309,7 +312,7 @@ fn applyMigratePlan(
                 };
 
                 moved += 1;
-                if (!output.isJson()) try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
+                if (!output.isJson(ctx)) try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -322,8 +325,8 @@ fn applyMigratePlan(
         }
     }
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt migrate", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt migrate", .{
             .force = force,
             .total = plan.len,
             .migrated = moved,
@@ -349,7 +352,7 @@ fn movePrimaryCheckout(
     force: bool,
     stderr: anytype,
 ) !void {
-    try prepareMigrateTarget(to, force);
+    try prepareMigrateTarget(allocator, to, force);
     try std.fs.renameAbsolute(from, to);
 
     const result = try std.process.Child.run(.{
@@ -375,7 +378,7 @@ fn moveLinkedWorktree(
     force: bool,
     stderr: anytype,
 ) !void {
-    try prepareMigrateTarget(to, force);
+    try prepareMigrateTarget(allocator, to, force);
 
     const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "move", from, to });
     defer allocator.free(owned);
@@ -396,7 +399,7 @@ fn moveLinkedWorktree(
     return error.GitCommandFailed;
 }
 
-fn prepareMigrateTarget(target: []const u8, force: bool) !void {
+fn prepareMigrateTarget(allocator: std.mem.Allocator, target: []const u8, force: bool) !void {
     switch (try detectTargetState(target)) {
         .missing => {},
         .dir_empty => std.fs.deleteDirAbsolute(target) catch |err| switch (err) {
@@ -420,7 +423,7 @@ fn prepareMigrateTarget(target: []const u8, force: bool) !void {
     }
 
     const parent = std.fs.path.dirname(target) orelse return error.InvalidRenderedPath;
-    try makePathAbsolute(parent);
+    try fs.ensureDir(allocator, parent);
 }
 
 fn detectTargetState(target: []const u8) !TargetState {
@@ -481,31 +484,6 @@ fn isPathWithinRoot(allocator: std.mem.Allocator, pathname: []const u8, root: []
     return !std.mem.eql(u8, rel, "..") and
         !std.mem.startsWith(u8, rel, "../") and
         !std.mem.startsWith(u8, rel, "..\\");
-}
-
-fn makePathAbsolute(pathname: []const u8) !void {
-    if (!std.fs.path.isAbsolute(pathname)) {
-        return std.fs.cwd().makePath(pathname);
-    }
-
-    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
-
-    var current = std.ArrayList(u8).empty;
-    defer current.deinit(std.heap.page_allocator);
-    try current.append(std.heap.page_allocator, std.fs.path.sep);
-
-    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
-    while (parts.next()) |part| {
-        if (part.len == 0) continue;
-        if (current.items.len > 1) {
-            try current.append(std.heap.page_allocator, std.fs.path.sep);
-        }
-        try current.appendSlice(std.heap.page_allocator, part);
-        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-    }
 }
 
 fn parseArgs(args: []const []const u8) !ParsedArgs {
@@ -623,7 +601,7 @@ test "buildMigratePlan skips detached worktree and conflicting target without fo
     const target = try std.fs.path.join(allocator, &.{ worktree_root, "repo", "feature-b" });
     defer allocator.free(target);
 
-    try makePathAbsolute(target);
+    try fs.ensureDir(allocator, target);
     const conflict = try std.fs.path.join(allocator, &.{ target, "conflict.txt" });
     defer allocator.free(conflict);
     const file = try std.fs.createFileAbsolute(conflict, .{});
@@ -684,9 +662,9 @@ test "buildMigratePlan forces primary move when target exists as file" {
     const target = try std.fs.path.join(allocator, &.{ home, "src", "repo" });
     defer allocator.free(target);
 
-    try makePathAbsolute(primary);
+    try fs.ensureDir(allocator, primary);
     const target_parent = std.fs.path.dirname(target).?;
-    try makePathAbsolute(target_parent);
+    try fs.ensureDir(allocator, target_parent);
     const file = try std.fs.createFileAbsolute(target, .{});
     file.close();
 

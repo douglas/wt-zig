@@ -6,23 +6,24 @@ const prompt = @import("../prompt.zig");
 const pr_git = @import("../git/pr.zig");
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
-    return runRemoteCommand(allocator, cfg, args, stdout, stderr, .github);
+    return runRemoteCommand(ctx, cfg, args, stdout, stderr, .github);
 }
 
 pub fn runRemoteCommand(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
     remote_type: pr_git.RemoteType,
 ) !u8 {
+    const allocator = ctx.allocator;
     const command_name = commandName(remote_type);
     var input: []const u8 = undefined;
     var owned_input: ?[]u8 = null;
@@ -30,12 +31,12 @@ pub fn runRemoteCommand(
 
     switch (args.len) {
         0 => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = switch (remote_type) {
                     .github => "wt pr with --format json requires an explicit PR number or URL",
                     .gitlab => "wt mr with --format json requires an explicit MR number or URL",
                 };
-                try output.emitError(stdout, command_name, message);
+                try output.emitError(ctx, stdout, command_name, message);
                 return 1;
             }
 
@@ -78,45 +79,45 @@ pub fn runRemoteCommand(
             input = owned_input.?;
         },
         1 => input = args[0],
-        else => return output.usageError(stdout, stderr, command_name, usageText(remote_type)),
+        else => return output.usageError(ctx, stdout, stderr, command_name, usageText(remote_type)),
     }
 
     const resolved = pr_git.resolveBranchName(allocator, remote_type, input) catch |err| switch (err) {
         error.InvalidPullRequestInput => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), input });
                 defer allocator.free(message);
-                try output.emitError(stdout, command_name, message);
+                try output.emitError(ctx, stdout, command_name, message);
             } else {
                 try stderr.print("invalid {s} number or URL: {s}\n", .{ pr_git.commandName(remote_type), input });
             }
             return 1;
         },
         error.MissingPlatformCli => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "'{s}' CLI not found", .{cliName(remote_type)});
                 defer allocator.free(message);
-                try output.emitError(stdout, command_name, message);
+                try output.emitError(ctx, stdout, command_name, message);
             } else {
                 try stderr.print("'{s}' CLI not found\n", .{cliName(remote_type)});
             }
             return 1;
         },
         error.PlatformLookupFailed => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "failed to look up branch for {s}: {s}", .{ pr_git.label(remote_type), input });
                 defer allocator.free(message);
-                try output.emitError(stdout, command_name, message);
+                try output.emitError(ctx, stdout, command_name, message);
             } else {
                 try stderr.print("failed to look up branch for {s}: {s}\n", .{ pr_git.label(remote_type), input });
             }
             return 1;
         },
         error.EmptyBranchName => {
-            if (output.isJson()) {
+            if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "empty branch name returned for {s}: {s}", .{ pr_git.label(remote_type), input });
                 defer allocator.free(message);
-                try output.emitError(stdout, command_name, message);
+                try output.emitError(ctx, stdout, command_name, message);
             } else {
                 try stderr.print("empty branch name returned for {s}: {s}\n", .{ pr_git.label(remote_type), input });
             }
@@ -145,11 +146,11 @@ pub fn runRemoteCommand(
                 resolved.branch, pr_git.label(remote_type), resolved.id,
             });
             defer allocator.free(message);
-            if (output.isJson()) try output.emitError(stdout, command_name, message) else try stderr.print("{s}\n", .{message});
+            if (output.isJson(ctx)) try output.emitError(ctx, stdout, command_name, message) else try stderr.print("{s}\n", .{message});
             return 1;
         },
         error.HookCommandFailed => {
-            if (output.isJson()) try output.emitError(stdout, command_name, "pre hook failed") else try stderr.print("pre-{s} hook failed\n", .{pr_git.commandName(remote_type)});
+            if (output.isJson(ctx)) try output.emitError(ctx, stdout, command_name, "pre hook failed") else try stderr.print("pre-{s} hook failed\n", .{pr_git.commandName(remote_type)});
             return 1;
         },
         error.GitCommandFailed => return 1,
@@ -157,8 +158,8 @@ pub fn runRemoteCommand(
     };
     defer allocator.free(outcome.path);
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, command_name, .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, command_name, .{
             .status = if (outcome.existed) "exists" else "created",
             .id = resolved.id,
             .kind = pr_git.commandName(remote_type),

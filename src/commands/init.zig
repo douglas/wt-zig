@@ -1,4 +1,5 @@
 const builtin = @import("builtin");
+const fs = @import("../fs.zig");
 const std = @import("std");
 const output = @import("../output.zig");
 
@@ -33,13 +34,14 @@ const RemoveResult = enum {
 };
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
-        return output.usageError(stdout, stderr, "wt init", "Usage: wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]");
+        return output.usageError(ctx, stdout, stderr, "wt init", "Usage: wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]");
     };
 
     var env_map = try std.process.getEnvMap(allocator);
@@ -47,20 +49,20 @@ pub fn run(
 
     const shell = detectShell(parsed.shell, &env_map) catch |err| switch (err) {
         error.UnsupportedShell => {
-            try writeCommandError(stdout, stderr, "could not detect shell. Please specify: wt init bash|zsh|powershell");
+            try writeCommandError(ctx, stdout, stderr, "could not detect shell. Please specify: wt init bash|zsh|powershell");
             return 1;
         },
         else => return err,
     };
 
     if (shell == .powershell and builtin.os.tag != .windows) {
-        try writeCommandError(stdout, stderr, "PowerShell shell integration is only supported on Windows. On macOS/Linux, use: wt init bash or wt init zsh");
+        try writeCommandError(ctx, stdout, stderr, "PowerShell shell integration is only supported on Windows. On macOS/Linux, use: wt init bash or wt init zsh");
         return 1;
     }
 
     const config_path = shellConfigPath(allocator, shell, &env_map) catch |err| switch (err) {
         error.MissingHomeDirectory => {
-            try writeCommandError(stdout, stderr, "could not determine shell config path: missing HOME");
+            try writeCommandError(ctx, stdout, stderr, "could not determine shell config path: missing HOME");
             return 1;
         },
         else => return err,
@@ -69,8 +71,8 @@ pub fn run(
 
     if (parsed.uninstall) {
         const result = try removeShellConfig(allocator, config_path, parsed.dry_run);
-        if (output.isJson()) {
-            try output.emitSuccess(allocator, stdout, "wt init", .{
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt init", .{
                 .status = if (parsed.dry_run) "planned" else "removed",
                 .operation = "uninstall",
                 .shell = shellName(shell),
@@ -86,8 +88,8 @@ pub fn run(
     }
 
     const result = try installShellConfig(allocator, config_path, shell, parsed.dry_run);
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt init", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt init", .{
             .status = if (parsed.dry_run) "planned" else "installed",
             .operation = "install",
             .shell = shellName(shell),
@@ -180,7 +182,7 @@ fn bashConfigPath(allocator: std.mem.Allocator, home: []const u8) ![]u8 {
     const bashrc = try std.fs.path.join(allocator, &.{ home, ".bashrc" });
     errdefer allocator.free(bashrc);
 
-    if (fileExists(bashrc)) return bashrc;
+    if (fs.fileExists(bashrc)) return bashrc;
     if (builtin.os.tag == .macos) {
         allocator.free(bashrc);
         return std.fs.path.join(allocator, &.{ home, ".bash_profile" });
@@ -336,56 +338,16 @@ fn shellName(shell: Shell) []const u8 {
     };
 }
 
-fn writeCommandError(stdout: anytype, stderr: anytype, message: []const u8) !void {
-    if (output.isJson()) {
-        try output.emitError(stdout, "wt init", message);
+fn writeCommandError(ctx: output.Context, stdout: anytype, stderr: anytype, message: []const u8) !void {
+    if (output.isJson(ctx)) {
+        try output.emitError(ctx, stdout, "wt init", message);
     } else {
         try stderr.print("{s}\n", .{message});
     }
 }
 
-fn fileExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
-    return true;
-}
-
-fn makePathAbsolute(pathname: []const u8) !void {
-    if (!std.fs.path.isAbsolute(pathname)) {
-        return std.fs.cwd().makePath(pathname);
-    }
-
-    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
-
-    var current = std.ArrayList(u8).empty;
-    defer current.deinit(std.heap.page_allocator);
-    try current.append(std.heap.page_allocator, std.fs.path.sep);
-
-    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
-    while (parts.next()) |part| {
-        if (part.len == 0) continue;
-        if (current.items.len > 1) {
-            try current.append(std.heap.page_allocator, std.fs.path.sep);
-        }
-        try current.appendSlice(std.heap.page_allocator, part);
-        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => return err,
-        };
-    }
-}
-
 fn writeShellConfig(allocator: std.mem.Allocator, path: []const u8, contents: []const u8) !void {
-    const parent = std.fs.path.dirname(path) orelse return error.InvalidConfigPath;
-    try makePathAbsolute(parent);
-
-    if (!std.fs.path.isAbsolute(path)) {
-        return std.fs.cwd().writeFile(.{ .sub_path = path, .data = contents });
-    }
-
-    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
-    defer file.close();
-    _ = allocator;
-    try file.writeAll(contents);
+    try fs.writeFile(allocator, path, contents);
 }
 
 test "parseArgs accepts shell and flags in any order" {

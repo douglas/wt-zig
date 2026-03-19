@@ -1,0 +1,107 @@
+# wt vs wt-zig
+
+This document compares the original Go implementation in [`/home/douglas/src/wt`](/home/douglas/src/wt) with the Zig port in this repository.
+
+## Status
+
+`wt-zig` is complete under this repo's practical-parity standard:
+
+- full current command-surface coverage
+- `zig build` and `zig build test` pass
+- `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
+
+On the maintained Linux host baseline, both implementations currently report:
+
+- `Passed: 88`
+- `Failed: 2`
+- `Skipped: 4`
+
+The two remaining failures are inherited from the Go baseline in this environment and are not treated as open `wt-zig` regressions:
+
+- `config/config_show_defaults`
+- `init/init_uninstall`
+
+## High-Level Difference
+
+The Go version is the original upstream-style implementation. It has the stronger packaging and ecosystem story today, and it is the more familiar codebase for typical CLI contributors.
+
+The Zig version is a native port with the same practical feature set, but it uses a different internal architecture. Instead of a Cobra-driven command tree, it is organized around a native dispatcher plus focused shared modules for config, output, prompts, path resolution, git integration, and command handlers.
+
+## What Is Better In Go
+
+- Broader distribution story. The Go repo already documents Homebrew, Scoop, WinGet, Linux packages, and `go install`.
+- More familiar stack for most contributors. Go, Cobra, and common Go CLI tooling are easier to approach for a wider group of developers.
+- Smaller binary in the current local installs. The Go build at [`~/.bin/wt`](/home/douglas/.bin/wt) is about `6.6M`, while the Zig build at [`~/.bin/wt-zig`](/home/douglas/.bin/wt-zig) is about `17M`.
+- Better choice if one implementation needs to remain the canonical external reference.
+
+## What Is Better In Zig
+
+- More explicit internal separation of concerns. Shared logic lives in dedicated modules instead of being spread across a framework-shaped command tree.
+- Stronger parity verification loop. This repo includes `scripts/parity-harness.sh`, which builds both CLIs, runs the Go e2e suite against both, and flags Zig-only regressions.
+- Lower third-party dependency surface at the project level. The Zig project metadata is minimal compared with the Go module dependency set.
+- Better fit if this repo is the one you want to evolve deliberately, because the design decisions and parity criteria are documented directly in [port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
+
+## When To Use Which
+
+Use Go `wt` when:
+
+- you want the original implementation
+- you care about existing packaging and install channels
+- you want the most contributor-friendly stack
+- you want the implementation that best matches the public upstream posture
+
+Use Zig `wt-zig` when:
+
+- you want the port that has been hardened locally with the parity harness
+- you prefer the current modular architecture
+- you want to keep iterating in Zig rather than in Go
+- you are operating primarily on the same environment where parity was verified
+
+For this machine, the practical default is:
+
+- use [`~/.bin/wt-zig`](/home/douglas/.bin/wt-zig) as the daily driver
+- keep [`~/.bin/wt`](/home/douglas/.bin/wt) as the reference implementation and fallback
+
+## Maintenance Tradeoffs
+
+If the question is "which is easier for me to maintain in this repo?", the answer is probably `wt-zig`.
+
+Reasons:
+
+- the Zig code is already structured around reusable layers
+- the parity harness gives a direct regression signal against the Go implementation
+- the repo handoff notes document the architecture and maintenance boundaries
+
+If the question is "which is easier for the average outside contributor to maintain?", the answer is probably `wt`.
+
+Reasons:
+
+- Go is more widely used
+- Cobra-style CLIs are familiar
+- the Go toolchain and dependency model are more common in day-to-day contributor environments
+
+## Drawbacks
+
+Go drawbacks:
+
+- larger dependency surface through Cobra, pflag, YAML, PTY, and terminal support packages
+- more framework-driven command structure
+- weaker parity-specific instrumentation than this Zig repo now has
+
+Zig drawbacks:
+
+- larger binary in the current local build
+- smaller contributor pool
+- more stdlib/toolchain sharp edges, especially in Zig `0.15.2`
+- practical parity does not mean byte-for-byte identical output in every edge case
+
+## Recommendation
+
+If you want one implementation to use every day on this machine, use `wt-zig`.
+
+If you want one implementation to treat as the canonical public-facing or contributor-default codebase, keep using `wt`.
+
+If you want to keep both:
+
+- `wt` remains the upstream-style reference
+- `wt-zig` remains the maintained parity port and likely the better place for controlled internal evolution

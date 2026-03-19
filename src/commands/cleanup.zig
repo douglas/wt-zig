@@ -17,14 +17,15 @@ const PlannedWorktree = struct {
 };
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
-        return output.usageError(stdout, stderr, "wt cleanup", "Usage: wt cleanup [--dry-run] [--force|-f]");
+        return output.usageError(ctx, stdout, stderr, "wt cleanup", "Usage: wt cleanup [--dry-run] [--force|-f]");
     };
 
     const base = try git_repo.getDefaultBase(allocator);
@@ -40,8 +41,8 @@ pub fn run(
     defer allocator.free(candidates);
 
     if (candidates.len == 0) {
-        if (output.isJson()) {
-            try output.emitSuccess(allocator, stdout, "wt cleanup", .{
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt cleanup", .{
                 .removed = 0,
                 .skipped = 0,
                 .base = base,
@@ -53,13 +54,13 @@ pub fn run(
         return 0;
     }
 
-    if (output.isJson() and !parsed.dry_run and !parsed.force) {
-        try output.emitError(stdout, "wt cleanup", "wt cleanup with --format json requires --force or --dry-run");
+    if (output.isJson(ctx) and !parsed.dry_run and !parsed.force) {
+        try output.emitError(ctx, stdout, "wt cleanup", "wt cleanup with --format json requires --force or --dry-run");
         return 1;
     }
 
     if (parsed.dry_run) {
-        if (output.isJson()) {
+        if (output.isJson(ctx)) {
             var planned = std.ArrayList(PlannedWorktree).empty;
             defer planned.deinit(allocator);
             for (candidates) |entry| {
@@ -68,7 +69,7 @@ pub fn run(
                     .path = entry.path,
                 });
             }
-            try output.emitSuccess(allocator, stdout, "wt cleanup", .{
+            try output.emitSuccess(ctx, stdout, "wt cleanup", .{
                 .dry_run = true,
                 .base = base,
                 .worktrees = planned.items,
@@ -95,7 +96,7 @@ pub fn run(
             const confirmed = prompt.confirmPrompt(allocator, label, stderr) catch false;
             if (!confirmed) {
                 skipped_count += 1;
-                if (!output.isJson()) {
+                if (!output.isJson(ctx)) {
                     try stdout.print("  Skipped: {s}\n", .{branch});
                 }
                 continue;
@@ -106,12 +107,12 @@ pub fn run(
             error.NoSuchWorktree, error.CannotRemoveMainWorktree => continue,
             error.HookCommandFailed => {
                 skipped_count += 1;
-                if (!output.isJson()) try stderr.print("skipped merged branch {s}: pre-remove hook failed\n", .{branch});
+                if (!output.isJson(ctx)) try stderr.print("skipped merged branch {s}: pre-remove hook failed\n", .{branch});
                 continue;
             },
             error.GitCommandFailed => {
                 skipped_count += 1;
-                if (!output.isJson()) try stdout.print("  Failed to remove {s}\n", .{branch});
+                if (!output.isJson(ctx)) try stdout.print("  Failed to remove {s}\n", .{branch});
                 continue;
             },
             else => return err,
@@ -120,15 +121,15 @@ pub fn run(
         defer if (outcome.navigate_to) |navigate_to| allocator.free(navigate_to);
 
         removed_count += 1;
-        if (!output.isJson()) {
+        if (!output.isJson(ctx)) {
             try stdout.print("Removed worktree: {s}\n", .{branch});
         }
     }
 
     _ = runGitPrune(allocator) catch {};
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt cleanup", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt cleanup", .{
             .dry_run = false,
             .base = base,
             .removed = removed_count,

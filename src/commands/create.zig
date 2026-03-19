@@ -7,14 +7,15 @@ const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub fn run(
-    allocator: std.mem.Allocator,
+    ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
+    const allocator = ctx.allocator;
     if (args.len == 0 or args.len > 2) {
-        return output.usageError(stdout, stderr, "wt create", "Usage: wt create <branch> [base-branch]");
+        return output.usageError(ctx, stdout, stderr, "wt create", "Usage: wt create <branch> [base-branch]");
     }
 
     const branch = args[0];
@@ -29,8 +30,8 @@ pub fn run(
     for (listed.entries) |entry| {
         if (entry.branch) |existing_branch| {
             if (std.mem.eql(u8, existing_branch, branch)) {
-                if (output.isJson()) {
-                    try output.emitSuccess(allocator, stdout, "wt create", .{
+                if (output.isJson(ctx)) {
+                    try output.emitSuccess(ctx, stdout, "wt create", .{
                         .status = "exists",
                         .branch = branch,
                         .base = base,
@@ -56,8 +57,8 @@ pub fn run(
     defer hook_env.deinit();
 
     hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr) catch |err| {
-        if (output.isJson()) {
-            output.emitError(stdout, "wt create", "pre-create hook failed") catch {};
+        if (output.isJson(ctx)) {
+            output.emitError(ctx, stdout, "wt create", "pre-create hook failed") catch {};
         } else {
             stderr.print("pre-create hook failed: {s}\n", .{@errorName(err)}) catch {};
         }
@@ -69,8 +70,8 @@ pub fn run(
 
     hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 
-    if (output.isJson()) {
-        try output.emitSuccess(allocator, stdout, "wt create", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt create", .{
             .status = "created",
             .branch = branch,
             .base = base,

@@ -44,4 +44,19 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
+
+    const check_step = b.step("check", "Build the CLI and run unit tests");
+    check_step.dependOn(b.getInstallStep());
+    check_step.dependOn(&run_unit_tests.step);
+
+    const parity_cmd = b.addSystemCommand(&.{
+        "/usr/bin/env",
+        b.fmt("WT_ZIG_REPO={s}", .{b.pathFromRoot(".")}),
+        b.fmt("ZIG_GLOBAL_CACHE_DIR={s}", .{b.pathFromRoot(".zig-global-cache")}),
+        b.fmt("ZIG_LOCAL_CACHE_DIR={s}", .{b.pathFromRoot(".zig-cache")}),
+        b.pathFromRoot("scripts/parity-harness.sh"),
+    });
+    parity_cmd.step.dependOn(b.getInstallStep());
+    const parity_step = b.step("parity", "Run the Go-vs-Zig parity harness");
+    parity_step.dependOn(&parity_cmd.step);
 }

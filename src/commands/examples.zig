@@ -361,15 +361,15 @@ const topics = [_]Topic{
     .{ .name = "version", .description = "Show wt version", .examples = &version_examples },
 };
 
-pub fn run(args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
     if (args.len != 0) {
         var message_buffer: [256]u8 = undefined;
         const message = try std.fmt.bufPrint(&message_buffer, "unknown command: {s}", .{args[0]});
-        return output.usageError(stdout, stderr, "wt", message);
+        return output.usageError(ctx, stdout, stderr, "wt", message);
     }
 
-    if (output.isJson()) {
-        try output.emitSuccess(std.heap.page_allocator, stdout, "wt examples", .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt examples", .{
             .catalog_scope = "full",
             .notes = .{
                 "The examples catalog is intentionally full and unfiltered.",
