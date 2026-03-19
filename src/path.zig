@@ -117,8 +117,33 @@ pub fn buildWorktreePath(
     errdefer allocator.free(rendered);
 
     const parent = std.fs.path.dirname(rendered) orelse return error.InvalidRenderedPath;
-    try std.fs.cwd().makePath(parent);
+    try makePathAbsolute(parent);
     return rendered;
+}
+
+fn makePathAbsolute(pathname: []const u8) !void {
+    if (!std.fs.path.isAbsolute(pathname)) {
+        return std.fs.cwd().makePath(pathname);
+    }
+
+    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
+
+    var current = std.ArrayList(u8).empty;
+    defer current.deinit(std.heap.page_allocator);
+    try current.append(std.heap.page_allocator, std.fs.path.sep);
+
+    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
+    while (parts.next()) |part| {
+        if (part.len == 0) continue;
+        if (current.items.len > 1) {
+            try current.append(std.heap.page_allocator, std.fs.path.sep);
+        }
+        try current.appendSlice(std.heap.page_allocator, part);
+        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+    }
 }
 
 fn resolveToken(

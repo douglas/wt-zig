@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const hooks = @import("../hooks.zig");
 const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
@@ -41,8 +42,18 @@ pub fn run(
     const target_path = try path_mod.buildWorktreePath(allocator, cfg, info, branch, &env_map);
     defer allocator.free(target_path);
 
+    var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
+    defer hook_env.deinit();
+
+    hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr) catch |err| {
+        try stderr.print("pre-create hook failed: {s}\n", .{@errorName(err)});
+        return 1;
+    };
+
     const success = try runGitCreate(allocator, target_path, branch, base, stderr);
     if (!success) return 1;
+
+    hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 
     try stdout.print("Worktree created at: {s}\n", .{target_path});
     try stdout.print("wt navigating to: {s}\n", .{target_path});
