@@ -71,6 +71,34 @@ pub const Options = struct {
     env_map: ?*const std.process.EnvMap = null,
 };
 
+pub const default_config_template =
+    \\# wt configuration file
+    \\# Zig port starter config
+    \\
+    \\# Root directory for worktrees (default: ~/dev/worktrees)
+    \\# root = "~/dev/worktrees"
+    \\
+    \\# Worktree placement strategy
+    \\# Options: global, sibling-repo, parent-branches, parent-worktrees,
+    \\#          parent-dotdir, inside-dotdir, custom
+    \\# strategy = "global"
+    \\
+    \\# Custom pattern (used when strategy = "custom", or to override any strategy's default)
+    \\# Available variables: {.worktreeRoot}, {.repo.Name}, {.repo.Main},
+    \\#                      {.repo.Owner}, {.repo.Host}, {.branch},
+    \\#                      {.env.VARNAME}
+    \\# pattern = "{.worktreeRoot}/{.repo.Name}/{.branch}"
+    \\
+    \\# Separator replaces "/" and "\\" in template value variables.
+    \\# separator = "/"
+    \\
+    \\[hooks]
+    \\# post_create = ["test -f $WT_MAIN/.env && cp $WT_MAIN/.env $WT_PATH/.env || true"]
+    \\# post_checkout = ["cd $WT_PATH && npm install"]
+    \\# pre_remove = ["echo Removing $WT_PATH"]
+    \\
+;
+
 pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
@@ -134,6 +162,14 @@ pub fn resolveConfigPath(
     const dir = try configDir(allocator, env_map);
     defer allocator.free(dir);
     return std.fs.path.join(allocator, &.{ dir, "config.toml" });
+}
+
+pub fn writeDefaultConfig(path: []const u8) !void {
+    if (fileExists(path)) return error.ConfigFileAlreadyExists;
+
+    const dir = std.fs.path.dirname(path) orelse return error.InvalidConfigPath;
+    try makePathAbsolute(dir);
+    try writeFileAbsolute(path, default_config_template);
 }
 
 pub fn configDir(allocator: std.mem.Allocator, env_map: *const std.process.EnvMap) ![]const u8 {
@@ -313,6 +349,41 @@ fn fileExists(path: []const u8) bool {
     return true;
 }
 
+fn makePathAbsolute(pathname: []const u8) !void {
+    if (!std.fs.path.isAbsolute(pathname)) {
+        return std.fs.cwd().makePath(pathname);
+    }
+
+    if (pathname.len == 0 or std.mem.eql(u8, pathname, "/")) return;
+
+    var current = std.ArrayList(u8).empty;
+    defer current.deinit(std.heap.page_allocator);
+    try current.append(std.heap.page_allocator, std.fs.path.sep);
+
+    var parts = std.mem.splitScalar(u8, pathname[1..], std.fs.path.sep);
+    while (parts.next()) |part| {
+        if (part.len == 0) continue;
+        if (current.items.len > 1) {
+            try current.append(std.heap.page_allocator, std.fs.path.sep);
+        }
+        try current.appendSlice(std.heap.page_allocator, part);
+        std.fs.makeDirAbsolute(current.items) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => return err,
+        };
+    }
+}
+
+fn writeFileAbsolute(path: []const u8, contents: []const u8) !void {
+    if (!std.fs.path.isAbsolute(path)) {
+        return std.fs.cwd().writeFile(.{ .sub_path = path, .data = contents });
+    }
+
+    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(contents);
+}
+
 test "resolveConfigPath prefers flag then env then default" {
     var env = std.process.EnvMap.init(std.testing.allocator);
     defer env.deinit();
@@ -403,4 +474,36 @@ test "load applies defaults then file then env overrides" {
     try std.testing.expectEqualStrings("env: WORKTREE_ROOT", loaded.resolved.sources.root);
     try std.testing.expectEqualStrings("config file", loaded.resolved.sources.pattern);
     try std.testing.expect(loaded.resolved.config_file_found);
+}
+
+test "writeDefaultConfig creates parent directories and file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const config_path = try std.fs.path.join(allocator, &.{ root, "nested", "wt", "config.toml" });
+    defer allocator.free(config_path);
+
+    try writeDefaultConfig(config_path);
+
+    const data = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
+    defer allocator.free(data);
+
+    try std.testing.expectEqualStrings(default_config_template, data);
+}
+
+test "writeDefaultConfig refuses to overwrite existing file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const config_path = try std.fs.path.join(allocator, &.{ root, "config.toml" });
+    defer allocator.free(config_path);
+
+    try writeFileAbsolute(config_path, "existing\n");
+    try std.testing.expectError(error.ConfigFileAlreadyExists, writeDefaultConfig(config_path));
 }

@@ -26,6 +26,24 @@ pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytyp
         return 0;
     }
 
+    if (std.mem.eql(u8, args[0], "init")) {
+        if (args.len != 1) {
+            try stderr.writeAll("Usage: wt config init\n");
+            return 1;
+        }
+
+        config.writeDefaultConfig(cfg.config_file_path) catch |err| switch (err) {
+            error.ConfigFileAlreadyExists => {
+                try stderr.print("config file already exists: {s}\n", .{cfg.config_file_path});
+                return 1;
+            },
+            else => return err,
+        };
+
+        try stdout.print("Created config file: {s}\n", .{cfg.config_file_path});
+        return 0;
+    }
+
     try stderr.print("Unknown config command: {s}\n\n", .{args[0]});
     try printHelp(stderr);
     return 1;
@@ -39,6 +57,8 @@ pub fn printHelp(writer: anytype) !void {
         \\  wt config <command>
         \\
         \\Commands:
+        \\  init
+        \\      Create a starter config file at the resolved config path
         \\  show
         \\      Print the effective configuration and its sources
         \\  path

@@ -9,6 +9,7 @@ The current slices keep the scope intentionally small:
 - bootstrap a Zig 0.15.2 project
 - provide a native command dispatcher
 - add config loading with defaults, `WT_CONFIG`, `--config`, and env overrides
+- add `wt config init` to create a starter config file at the resolved path
 - resolve effective worktree patterns from strategy aliases and custom templates
 - add non-interactive `checkout` and `create` flows on top of the path layer
 - add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
@@ -41,6 +42,7 @@ wt shellenv
 wt info
 wt config show
 wt config path
+wt config init
 ```
 
 ## Development
