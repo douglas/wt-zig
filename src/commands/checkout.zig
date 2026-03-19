@@ -3,6 +3,7 @@ const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
+const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
@@ -123,7 +124,7 @@ pub fn checkoutBranch(
     stderr: anytype,
 ) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
-    defer freeRepoInfo(allocator, &info);
+    defer git_repo.freeRepoInfo(allocator, &info);
 
     var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
     defer listed.deinit(allocator);
@@ -181,29 +182,27 @@ fn fetchBranch(
 ) !void {
     const primary = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", branch });
     defer allocator.free(primary);
-    const primary_result = try runGitCommandResult(allocator, primary);
-    defer allocator.free(primary_result.stderr);
-    defer allocator.free(primary_result.stdout);
-    if (primary_result.success) return;
+    var primary_result = try runGitCommandResult(allocator, primary);
+    defer primary_result.deinit(allocator);
+    if (primary_result.succeeded()) return;
 
     if (options.refspec) |refspec| {
         const fallback = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ refspec, branch });
         defer allocator.free(fallback);
         const fallback_argv = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", fallback });
         defer allocator.free(fallback_argv);
-        const fallback_result = try runGitCommandResult(allocator, fallback_argv);
-        defer allocator.free(fallback_result.stderr);
-        defer allocator.free(fallback_result.stdout);
-        if (fallback_result.success) return;
+        var fallback_result = try runGitCommandResult(allocator, fallback_argv);
+        defer fallback_result.deinit(allocator);
+        if (fallback_result.succeeded()) return;
 
-        const fallback_message = std.mem.trim(u8, fallback_result.stderr, " \r\n\t");
+        const fallback_message = fallback_result.trimmedStderr();
         if (fallback_message.len != 0) {
             try stderr.print("failed to fetch branch: {s}\n", .{fallback_message});
         }
         return;
     }
 
-    const primary_message = std.mem.trim(u8, primary_result.stderr, " \r\n\t");
+    const primary_message = primary_result.trimmedStderr();
     if (primary_message.len != 0) {
         try stderr.print("failed to fetch branch: {s}\n", .{primary_message});
     }
@@ -234,38 +233,19 @@ fn runGitCommand(
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    if (result.success) return true;
-    const message = std.mem.trim(u8, result.stderr, " \r\n\t");
+    if (result.succeeded()) return true;
+    const message = result.trimmedStderr();
     if (message.len != 0) {
         try stderr.print("{s}: {s}\n", .{ failure_prefix, message });
     }
     return false;
 }
 
-const GitCommandResult = struct {
-    success: bool,
-    stdout: []u8,
-    stderr: []u8,
-};
+const GitCommandResult = proc.Captured;
 
 fn runGitCommandResult(
     allocator: std.mem.Allocator,
     argv: []const []const u8,
 ) !GitCommandResult {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = argv,
-    });
-    return .{
-        .success = result.term == .Exited and result.term.Exited == 0,
-        .stdout = result.stdout,
-        .stderr = result.stderr,
-    };
-}
-
-fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
-    allocator.free(info.main);
-    allocator.free(info.host);
-    allocator.free(info.owner);
-    allocator.free(info.name);
+    return proc.run(allocator, argv);
 }

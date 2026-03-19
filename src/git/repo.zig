@@ -1,18 +1,15 @@
 const std = @import("std");
 const path_mod = @import("../path.zig");
+const proc = @import("../process.zig");
 const worktree = @import("worktree.zig");
 
 pub fn getDefaultBase(allocator: std.mem.Allocator) ![]const u8 {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "git", "symbolic-ref", "refs/remotes/origin/HEAD" },
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    var result = try proc.run(allocator, &.{ "git", "symbolic-ref", "refs/remotes/origin/HEAD" });
+    defer result.deinit(allocator);
 
     return switch (result.term) {
         .Exited => |code| if (code == 0)
-            normalizeBaseRef(allocator, std.mem.trim(u8, result.stdout, " \r\n\t"))
+            normalizeBaseRef(allocator, result.trimmedStdout())
         else
             allocator.dupe(u8, "main"),
         else => allocator.dupe(u8, "main"),
@@ -170,6 +167,13 @@ pub fn parseRemoteURL(remote_url: []const u8) ?ParsedRemote {
     return parseRemotePath(host, path);
 }
 
+pub fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
+    allocator.free(info.main);
+    allocator.free(info.host);
+    allocator.free(info.owner);
+    allocator.free(info.name);
+}
+
 fn parseRemotePath(host: []const u8, remote_path: []const u8) ?ParsedRemote {
     var parts = std.mem.splitScalar(u8, remote_path, '/');
     var count: usize = 0;
@@ -312,12 +316,9 @@ fn gitOutput(allocator: std.mem.Allocator, argv: []const []const u8) ![]u8 {
     const owned = try args.toOwnedSlice(allocator);
     defer allocator.free(owned);
 
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = owned,
-    });
+    var result = try proc.run(allocator, owned);
     defer allocator.free(result.stderr);
-    if (result.term != .Exited or result.term.Exited != 0) {
+    if (!result.succeeded()) {
         allocator.free(result.stdout);
         return error.GitCommandFailed;
     }
@@ -333,14 +334,7 @@ fn gitQuietSuccess(allocator: std.mem.Allocator, argv: []const []const u8) !bool
     const owned = try args.toOwnedSlice(allocator);
     defer allocator.free(owned);
 
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = owned,
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-
-    return result.term == .Exited and result.term.Exited == 0;
+    return proc.quietSuccess(allocator, owned);
 }
 
 test "parseRemoteURL handles https and scp forms" {

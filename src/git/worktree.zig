@@ -1,4 +1,5 @@
 const std = @import("std");
+const proc = @import("../process.zig");
 
 pub const Entry = struct {
     path: []const u8 = "",
@@ -21,10 +22,7 @@ pub const ListResult = struct {
 };
 
 pub fn list(allocator: std.mem.Allocator, stderr: anytype) !ListResult {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "git", "worktree", "list", "--porcelain" },
-    });
+    const result = try proc.run(allocator, &.{ "git", "worktree", "list", "--porcelain" });
     errdefer allocator.free(result.stdout);
     errdefer allocator.free(result.stderr);
 

@@ -2,6 +2,7 @@ const std = @import("std");
 const config = @import("../config.zig");
 const git_repo = @import("../git/repo.zig");
 const output = @import("../output.zig");
+const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
 const worktree = @import("../git/worktree.zig");
 const remove = @import("remove.zig");
@@ -194,17 +195,17 @@ fn freeStringSlice(allocator: std.mem.Allocator, values: [][]u8) void {
 }
 
 fn runGitPrune(allocator: std.mem.Allocator) !void {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "git", "worktree", "prune" },
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    var result = try proc.run(allocator, &.{ "git", "worktree", "prune" });
+    defer result.deinit(allocator);
 }
 
 test "containsBranch matches existing branch names" {
-    try std.testing.expect(containsBranch(&.{ "feat/a", "feat/b" }, "feat/a"));
-    try std.testing.expect(!containsBranch(&.{ "feat/a", "feat/b" }, "feat/c"));
+    const branches = [_][]u8{
+        @constCast("feat/a"),
+        @constCast("feat/b"),
+    };
+    try std.testing.expect(containsBranch(&branches, "feat/a"));
+    try std.testing.expect(!containsBranch(&branches, "feat/c"));
 }
 
 test "parseArgs accepts dry run and force" {

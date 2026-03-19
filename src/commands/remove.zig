@@ -3,6 +3,7 @@ const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
+const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
@@ -122,7 +123,7 @@ pub fn removeWorktree(
     stderr: anytype,
 ) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
-    defer freeRepoInfo(allocator, &info);
+    defer git_repo.freeRepoInfo(allocator, &info);
 
     var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
     defer listed.deinit(allocator);
@@ -198,23 +199,12 @@ fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, force: bool, std
     const argv = try args.toOwnedSlice(allocator);
     defer allocator.free(argv);
 
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = argv,
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    var result = try proc.run(allocator, argv);
+    defer result.deinit(allocator);
 
-    if (result.term == .Exited and result.term.Exited == 0) return true;
-    try stderr.print("failed to remove worktree: {s}\n", .{std.mem.trim(u8, result.stderr, " \r\n\t")});
+    if (result.succeeded()) return true;
+    try stderr.print("failed to remove worktree: {s}\n", .{result.trimmedStderr()});
     return false;
-}
-
-fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
-    allocator.free(info.main);
-    allocator.free(info.host);
-    allocator.free(info.owner);
-    allocator.free(info.name);
 }
 
 fn parseArgs(args: []const []const u8) !ParsedArgs {

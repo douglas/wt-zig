@@ -1,5 +1,6 @@
 const std = @import("std");
 const output = @import("../output.zig");
+const proc = @import("../process.zig");
 
 pub fn run(
     ctx: output.Context,
@@ -12,14 +13,10 @@ pub fn run(
         return output.usageError(ctx, stdout, stderr, "wt prune", "Usage: wt prune");
     }
 
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "git", "worktree", "prune" },
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    var result = try proc.run(allocator, &.{ "git", "worktree", "prune" });
+    defer result.deinit(allocator);
 
-    if (result.term == .Exited and result.term.Exited == 0) {
+    if (result.succeeded()) {
         if (output.isJson(ctx)) {
             try output.emitSuccess(ctx, stdout, "wt prune", .{ .status = "pruned" });
         } else {
@@ -28,6 +25,6 @@ pub fn run(
         return 0;
     }
 
-    try stderr.print("failed to prune worktrees: {s}\n", .{std.mem.trim(u8, result.stderr, " \r\n\t")});
+    try stderr.print("failed to prune worktrees: {s}\n", .{result.trimmedStderr()});
     return 1;
 }

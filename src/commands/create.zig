@@ -2,8 +2,9 @@ const std = @import("std");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
-const path_mod = @import("../path.zig");
+const proc = @import("../process.zig");
 const git_repo = @import("../git/repo.zig");
+const path_mod = @import("../path.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub fn run(
@@ -23,7 +24,7 @@ pub fn run(
     defer if (args.len != 2) allocator.free(base);
 
     var info = try git_repo.getRepoInfo(allocator);
-    defer freeRepoInfo(allocator, &info);
+    defer git_repo.freeRepoInfo(allocator, &info);
 
     var listed = worktree.list(allocator, stderr) catch return 1;
     defer listed.deinit(allocator);
@@ -95,21 +96,10 @@ fn runGitCreate(
     const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "add", path, "-b", branch, base });
     defer allocator.free(owned);
 
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = owned,
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    var result = try proc.run(allocator, owned);
+    defer result.deinit(allocator);
 
-    if (result.term == .Exited and result.term.Exited == 0) return true;
-    try stderr.print("failed to create worktree: {s}\n", .{std.mem.trim(u8, result.stderr, " \r\n\t")});
+    if (result.succeeded()) return true;
+    try stderr.print("failed to create worktree: {s}\n", .{result.trimmedStderr()});
     return false;
-}
-
-fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
-    allocator.free(info.main);
-    allocator.free(info.host);
-    allocator.free(info.owner);
-    allocator.free(info.name);
 }

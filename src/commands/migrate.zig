@@ -4,41 +4,14 @@ const fs = @import("../fs.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
+const support = @import("migrate_support.zig");
 const worktree = @import("../git/worktree.zig");
 
-pub const Action = enum {
-    move,
-    move_force,
-    skip,
-};
-
-pub const PlanItem = struct {
-    branch: []const u8,
-    from: []const u8,
-    to: ?[]const u8,
-    primary: bool,
-    action: Action,
-    reason: []const u8 = "",
-};
-
-const TargetState = enum {
-    missing,
-    file,
-    dir_empty,
-    dir_non_empty,
-};
+pub const Action = support.Action;
+pub const PlanItem = support.PlanItem;
 
 const ParsedArgs = struct {
     force: bool,
-};
-
-const ResultItem = struct {
-    branch: []const u8,
-    from: []const u8,
-    to: ?[]const u8 = null,
-    status: []const u8,
-    primary: bool,
-    reason: ?[]const u8 = null,
 };
 
 pub fn run(
@@ -57,15 +30,15 @@ pub fn run(
     defer env_map.deinit();
 
     var info = try git_repo.getRepoInfo(allocator);
-    defer freeRepoInfo(allocator, &info);
+    defer git_repo.freeRepoInfo(allocator, &info);
 
     var listed = worktree.list(allocator, stderr) catch return 1;
     defer listed.deinit(allocator);
 
-    const plan = try buildMigratePlan(allocator, cfg, info, listed.entries, &env_map, parsed.force);
-    defer freePlan(allocator, plan);
+    const plan = try support.buildPlan(allocator, cfg, info, listed.entries, &env_map, parsed.force);
+    defer support.freePlan(allocator, plan);
 
-    return applyMigratePlan(ctx, parsed.force, plan, stdout, stderr);
+    return support.applyPlan(ctx, parsed.force, plan, stdout, stderr);
 }
 
 pub fn buildMigratePlan(
@@ -76,414 +49,7 @@ pub fn buildMigratePlan(
     env_map: *const std.process.EnvMap,
     force: bool,
 ) ![]PlanItem {
-    const abs_worktree_root = try canonicalPath(allocator, cfg.root);
-    defer allocator.free(abs_worktree_root);
-
-    const primary_target = try resolvePrimaryCheckoutTarget(allocator, repo, env_map);
-    defer allocator.free(primary_target);
-
-    var plan: std.ArrayList(PlanItem) = .empty;
-    errdefer plan.deinit(allocator);
-
-    for (entries, 0..) |entry, index| {
-        const from = entry.path;
-        const branch_label = entry.branch orelse "<detached>";
-
-        if (index == 0) {
-            if (!isPathWithinRoot(allocator, from, abs_worktree_root)) {
-                try appendPlanItem(allocator, &plan, .{
-                    .branch = branch_label,
-                    .from = from,
-                    .to = null,
-                    .primary = true,
-                    .action = .skip,
-                    .reason = "primary checkout already outside WORKTREE_ROOT",
-                });
-                continue;
-            }
-
-            if (std.mem.eql(u8, from, primary_target)) {
-                try appendPlanItem(allocator, &plan, .{
-                    .branch = branch_label,
-                    .from = from,
-                    .to = from,
-                    .primary = true,
-                    .action = .skip,
-                    .reason = "primary checkout already at target path",
-                });
-                continue;
-            }
-
-            const state = try detectTargetState(primary_target);
-            try appendPlanItem(allocator, &plan, planItemForTarget(
-                branch_label,
-                from,
-                primary_target,
-                true,
-                state,
-                force,
-            ));
-            continue;
-        }
-
-        if (entry.detached or entry.branch == null or std.mem.trim(u8, entry.branch.?, " \t").len == 0) {
-            try appendPlanItem(allocator, &plan, .{
-                .branch = branch_label,
-                .from = from,
-                .to = null,
-                .primary = false,
-                .action = .skip,
-                .reason = "detached or branchless worktree",
-            });
-            continue;
-        }
-
-        const target_path = try path_mod.renderWorktreePath(allocator, cfg, repo, entry.branch.?, env_map);
-        defer allocator.free(target_path);
-
-        if (std.mem.eql(u8, from, target_path)) {
-            try appendPlanItem(allocator, &plan, .{
-                .branch = branch_label,
-                .from = from,
-                .to = from,
-                .primary = false,
-                .action = .skip,
-                .reason = "already in configured path",
-            });
-            continue;
-        }
-
-        const state = try detectTargetState(target_path);
-        try appendPlanItem(allocator, &plan, planItemForTarget(
-            branch_label,
-            from,
-            target_path,
-            false,
-            state,
-            force,
-        ));
-    }
-
-    return plan.toOwnedSlice(allocator);
-}
-
-fn appendPlanItem(
-    allocator: std.mem.Allocator,
-    plan: *std.ArrayList(PlanItem),
-    item: PlanItem,
-) !void {
-    var owned = item;
-    if (item.to) |to| {
-        owned.to = try allocator.dupe(u8, to);
-    }
-    try plan.append(allocator, owned);
-}
-
-fn planItemForTarget(
-    branch: []const u8,
-    from: []const u8,
-    to: []const u8,
-    primary: bool,
-    state: TargetState,
-    force: bool,
-) PlanItem {
-    var item = PlanItem{
-        .branch = branch,
-        .from = from,
-        .to = to,
-        .primary = primary,
-        .action = .move,
-    };
-
-    switch (state) {
-        .missing => {},
-        .dir_empty => item.reason = "target path exists but is empty",
-        .dir_non_empty => {
-            if (force) {
-                item.action = .move_force;
-                item.reason = "target path exists and is non-empty (force)";
-            } else {
-                item.action = .skip;
-                item.reason = "target path exists and is non-empty";
-            }
-        },
-        .file => {
-            if (force) {
-                item.action = .move_force;
-                item.reason = "target path exists as file (force)";
-            } else {
-                item.action = .skip;
-                item.reason = "target path exists as file";
-            }
-        },
-    }
-
-    return item;
-}
-
-fn applyMigratePlan(
-    ctx: output.Context,
-    force: bool,
-    plan: []const PlanItem,
-    stdout: anytype,
-    stderr: anytype,
-) !u8 {
-    const allocator = ctx.allocator;
-    var moved: usize = 0;
-    var skipped: usize = 0;
-    var failed: usize = 0;
-    var results = std.ArrayList(ResultItem).empty;
-    defer results.deinit(allocator);
-
-    for (plan) |item| {
-        if (!item.primary) continue;
-
-        switch (item.action) {
-            .skip => {
-                skipped += 1;
-                if (!output.isJson(ctx)) try stdout.print("Skipped primary checkout: {s}\n", .{item.reason});
-                try results.append(allocator, .{
-                    .branch = item.branch,
-                    .from = item.from,
-                    .to = item.to,
-                    .status = "skipped",
-                    .primary = true,
-                    .reason = if (item.reason.len == 0) null else item.reason,
-                });
-            },
-            .move, .move_force => {
-                movePrimaryCheckout(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
-                    failed += 1;
-                    if (!output.isJson(ctx)) try stdout.print("Failed primary checkout: {s}\n", .{@errorName(err)});
-                    try results.append(allocator, .{
-                        .branch = item.branch,
-                        .from = item.from,
-                        .to = item.to,
-                        .status = "failed",
-                        .primary = true,
-                        .reason = @errorName(err),
-                    });
-                    continue;
-                };
-
-                moved += 1;
-                if (!output.isJson(ctx)) try stdout.print("Moved primary checkout: {s} -> {s}\n", .{ item.from, item.to.? });
-                try results.append(allocator, .{
-                    .branch = item.branch,
-                    .from = item.from,
-                    .to = item.to,
-                    .status = "moved",
-                    .primary = true,
-                    .reason = if (item.reason.len == 0) null else item.reason,
-                });
-            },
-        }
-    }
-
-    for (plan) |item| {
-        if (item.primary) continue;
-
-        switch (item.action) {
-            .skip => {
-                skipped += 1;
-                if (!output.isJson(ctx)) try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
-                try results.append(allocator, .{
-                    .branch = item.branch,
-                    .from = item.from,
-                    .to = item.to,
-                    .status = "skipped",
-                    .primary = false,
-                    .reason = if (item.reason.len == 0) null else item.reason,
-                });
-            },
-            .move, .move_force => {
-                moveLinkedWorktree(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
-                    failed += 1;
-                    if (!output.isJson(ctx)) try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
-                    try results.append(allocator, .{
-                        .branch = item.branch,
-                        .from = item.from,
-                        .to = item.to,
-                        .status = "failed",
-                        .primary = false,
-                        .reason = @errorName(err),
-                    });
-                    continue;
-                };
-
-                moved += 1;
-                if (!output.isJson(ctx)) try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
-                try results.append(allocator, .{
-                    .branch = item.branch,
-                    .from = item.from,
-                    .to = item.to,
-                    .status = "moved",
-                    .primary = false,
-                    .reason = if (item.reason.len == 0) null else item.reason,
-                });
-            },
-        }
-    }
-
-    if (output.isJson(ctx)) {
-        try output.emitSuccess(ctx, stdout, "wt migrate", .{
-            .force = force,
-            .total = plan.len,
-            .migrated = moved,
-            .skipped = skipped,
-            .failed = failed,
-            .results = results.items,
-        });
-    } else {
-        try stdout.print(
-            "\nMigration complete: {d} moved, {d} skipped, {d} failed\n",
-            .{ moved, skipped, failed },
-        );
-    }
-
-    if (failed > 0) return 1;
-    return 0;
-}
-
-fn movePrimaryCheckout(
-    allocator: std.mem.Allocator,
-    from: []const u8,
-    to: []const u8,
-    force: bool,
-    stderr: anytype,
-) !void {
-    try prepareMigrateTarget(allocator, to, force);
-    try std.fs.renameAbsolute(from, to);
-
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "git", "-C", to, "worktree", "repair" },
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-
-    if (result.term == .Exited and result.term.Exited == 0) return;
-
-    const message = std.mem.trim(u8, result.stderr, " \r\n\t");
-    if (message.len != 0) {
-        try stderr.print("failed to repair worktrees after moving primary checkout: {s}\n", .{message});
-    }
-    return error.GitCommandFailed;
-}
-
-fn moveLinkedWorktree(
-    allocator: std.mem.Allocator,
-    from: []const u8,
-    to: []const u8,
-    force: bool,
-    stderr: anytype,
-) !void {
-    try prepareMigrateTarget(allocator, to, force);
-
-    const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "move", from, to });
-    defer allocator.free(owned);
-
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = owned,
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-
-    if (result.term == .Exited and result.term.Exited == 0) return;
-
-    const message = std.mem.trim(u8, result.stderr, " \r\n\t");
-    if (message.len != 0) {
-        try stderr.print("failed to move worktree from {s} to {s}: {s}\n", .{ from, to, message });
-    }
-    return error.GitCommandFailed;
-}
-
-fn prepareMigrateTarget(allocator: std.mem.Allocator, target: []const u8, force: bool) !void {
-    switch (try detectTargetState(target)) {
-        .missing => {},
-        .dir_empty => std.fs.deleteDirAbsolute(target) catch |err| switch (err) {
-            error.FileNotFound => {},
-            else => return err,
-        },
-        .dir_non_empty => {
-            if (!force) return error.TargetPathNonEmpty;
-            std.fs.deleteTreeAbsolute(target) catch |err| switch (err) {
-                error.FileNotFound => {},
-                else => return err,
-            };
-        },
-        .file => {
-            if (!force) return error.TargetPathFile;
-            std.fs.deleteFileAbsolute(target) catch |err| switch (err) {
-                error.FileNotFound => {},
-                else => return err,
-            };
-        },
-    }
-
-    const parent = std.fs.path.dirname(target) orelse return error.InvalidRenderedPath;
-    try fs.ensureDir(allocator, parent);
-}
-
-fn detectTargetState(target: []const u8) !TargetState {
-    var dir = std.fs.openDirAbsolute(target, .{ .iterate = true }) catch |err| switch (err) {
-        error.FileNotFound => return .missing,
-        error.NotDir => return .file,
-        else => return err,
-    };
-    defer dir.close();
-
-    if (try isOpenDirEmpty(&dir)) return .dir_empty;
-    return .dir_non_empty;
-}
-
-fn isDirEmpty(pathname: []const u8) !bool {
-    var dir = try std.fs.openDirAbsolute(pathname, .{ .iterate = true });
-    defer dir.close();
-
-    return isOpenDirEmpty(&dir);
-}
-
-fn isOpenDirEmpty(dir: *std.fs.Dir) !bool {
-    var iter = dir.iterate();
-    return (try iter.next()) == null;
-}
-
-fn resolvePrimaryCheckoutTarget(
-    allocator: std.mem.Allocator,
-    repo: path_mod.RepoInfo,
-    env_map: *const std.process.EnvMap,
-) ![]const u8 {
-    const home = env_map.get("HOME") orelse return error.MissingHomeDirectory;
-
-    if (repo.owner.len == 0) {
-        return std.fs.path.join(allocator, &.{ home, "src", repo.name });
-    }
-
-    return std.fs.path.join(allocator, &.{ home, "src", repo.owner, repo.name });
-}
-
-fn canonicalPath(allocator: std.mem.Allocator, pathname: []const u8) ![]const u8 {
-    const absolute = try std.fs.path.resolve(allocator, &.{pathname});
-    errdefer allocator.free(absolute);
-
-    const resolved = std.fs.cwd().realpathAlloc(allocator, absolute) catch return absolute;
-    allocator.free(absolute);
-    return resolved;
-}
-
-fn isPathWithinRoot(allocator: std.mem.Allocator, pathname: []const u8, root: []const u8) bool {
-    const canonical_path = canonicalPath(allocator, pathname) catch return false;
-    defer allocator.free(canonical_path);
-
-    const rel = std.fs.path.relative(allocator, root, canonical_path) catch return false;
-    defer allocator.free(rel);
-
-    if (std.mem.eql(u8, rel, ".")) return true;
-    return !std.mem.eql(u8, rel, "..") and
-        !std.mem.startsWith(u8, rel, "../") and
-        !std.mem.startsWith(u8, rel, "..\\");
+    return support.buildPlan(allocator, cfg, repo, entries, env_map, force);
 }
 
 fn parseArgs(args: []const []const u8) !ParsedArgs {
@@ -499,20 +65,6 @@ fn parseArgs(args: []const []const u8) !ParsedArgs {
     }
 
     return .{ .force = force };
-}
-
-fn freePlan(allocator: std.mem.Allocator, plan: []PlanItem) void {
-    for (plan) |item| {
-        if (item.to) |to| allocator.free(to);
-    }
-    allocator.free(plan);
-}
-
-fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
-    allocator.free(info.main);
-    allocator.free(info.host);
-    allocator.free(info.owner);
-    allocator.free(info.name);
 }
 
 test "parseArgs accepts force flag" {
@@ -568,7 +120,7 @@ test "buildMigratePlan moves linked worktree into configured root" {
     };
 
     const plan = try buildMigratePlan(allocator, &cfg, repo, &entries, &env, false);
-    defer freePlan(allocator, plan);
+    defer support.freePlan(allocator, plan);
 
     try std.testing.expectEqual(@as(usize, 2), plan.len);
     try std.testing.expect(plan[0].primary);
@@ -635,7 +187,7 @@ test "buildMigratePlan skips detached worktree and conflicting target without fo
     };
 
     const plan = try buildMigratePlan(allocator, &cfg, repo, &entries, &env, false);
-    defer freePlan(allocator, plan);
+    defer support.freePlan(allocator, plan);
 
     try std.testing.expectEqual(Action.skip, plan[1].action);
     try std.testing.expectEqualStrings("detached or branchless worktree", plan[1].reason);
@@ -694,7 +246,7 @@ test "buildMigratePlan forces primary move when target exists as file" {
     };
 
     const plan = try buildMigratePlan(allocator, &cfg, repo, &entries, &env, true);
-    defer freePlan(allocator, plan);
+    defer support.freePlan(allocator, plan);
 
     try std.testing.expectEqual(Action.move_force, plan[0].action);
     try std.testing.expectEqualStrings("target path exists as file (force)", plan[0].reason);

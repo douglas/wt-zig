@@ -1,4 +1,5 @@
 const std = @import("std");
+const proc = @import("../process.zig");
 
 pub const RemoteType = enum {
     github,
@@ -100,17 +101,13 @@ fn leadingDigits(value: []const u8) []const u8 {
 }
 
 fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "gh", "pr", "view", id, "--json", "headRefName" },
-    }) catch |err| switch (err) {
+    var result = proc.run(allocator, &.{ "gh", "pr", "view", id, "--json", "headRefName" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
     };
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    defer result.deinit(allocator);
 
-    if (result.term != .Exited or result.term.Exited != 0) {
+    if (!result.succeeded()) {
         return error.PlatformLookupFailed;
     }
 
@@ -130,17 +127,13 @@ fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
 }
 
 fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "glab", "mr", "view", id, "--output", "json" },
-    }) catch |err| switch (err) {
+    var result = proc.run(allocator, &.{ "glab", "mr", "view", id, "--output", "json" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
     };
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    defer result.deinit(allocator);
 
-    if (result.term != .Exited or result.term.Exited != 0) {
+    if (!result.succeeded()) {
         return error.PlatformLookupFailed;
     }
 
@@ -160,30 +153,22 @@ fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
 }
 
 fn getOpenGitHubItems(allocator: std.mem.Allocator) ![]OpenItem {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "gh", "pr", "list", "--json", "number,title", "--jq", ".[] | \"\\(.number)\\t\\(.title)\"" },
-    }) catch |err| switch (err) {
+    var result = proc.run(allocator, &.{ "gh", "pr", "list", "--json", "number,title", "--jq", ".[] | \"\\(.number)\\t\\(.title)\"" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
     };
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-    if (result.term != .Exited or result.term.Exited != 0) return error.PlatformLookupFailed;
+    defer result.deinit(allocator);
+    if (!result.succeeded()) return error.PlatformLookupFailed;
     return parseTabSeparatedItems(allocator, result.stdout, "#");
 }
 
 fn getOpenGitLabItems(allocator: std.mem.Allocator) ![]OpenItem {
-    const result = std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = &.{ "glab", "mr", "list" },
-    }) catch |err| switch (err) {
+    var result = proc.run(allocator, &.{ "glab", "mr", "list" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
     };
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-    if (result.term != .Exited or result.term.Exited != 0) return error.PlatformLookupFailed;
+    defer result.deinit(allocator);
+    if (!result.succeeded()) return error.PlatformLookupFailed;
     return parseGitLabListItems(allocator, result.stdout);
 }
 

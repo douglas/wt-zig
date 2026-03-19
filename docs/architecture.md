@@ -27,8 +27,15 @@ Avoid reintroducing mutable global state for formatting or command behavior.
 Preferred layering:
 
 - `src/commands/*.zig`: command-local arg parsing and user-facing orchestration
-- shared helpers under `src/`: config, fs, output, path, prompt, hooks
+- shared helpers under `src/`: config, fs, output, path, process, prompt, hooks
 - git-specific shell/process interactions under `src/git/`
+
+When shared behavior becomes real infrastructure, give it a stable helper instead of repeating ad hoc command logic. Current examples:
+
+- `src/process.zig` is the single place that wraps `std.process.Child.run`
+- `src/config_support.zig` holds config path/file parsing and default-config writing
+- `src/commands/init_support.zig` holds shell detection and shell-block file operations
+- `src/commands/migrate_support.zig` holds migrate planning and execution
 
 When a command grows too large, split by behavior, not by arbitrary file size. Good seams are:
 
