@@ -11,6 +11,7 @@ pub const Kind = enum {
     remove,
     prune,
     cleanup,
+    migrate,
     pr,
     mr,
     shellenv,
@@ -117,6 +118,15 @@ pub const all = [_]Spec{
         .summary = "Remove worktrees for merged branches",
         .usage = "wt cleanup",
         .details = "Find linked worktrees whose branches are merged into the default base branch and remove them.",
+    },
+    .{
+        .kind = .migrate,
+        .name = "migrate",
+        .aliases = &.{},
+        .display = "migrate",
+        .summary = "Migrate existing worktrees to the configured path strategy",
+        .usage = "wt migrate [--force]",
+        .details = "Move linked worktrees into their configured locations and move the primary checkout back under ~/src when it currently lives inside WORKTREE_ROOT.",
     },
     .{
         .kind = .pr,

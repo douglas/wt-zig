@@ -9,6 +9,7 @@ const help_cmd = @import("commands/help.zig");
 const info_cmd = @import("commands/info.zig");
 const init_cmd = @import("commands/init.zig");
 const list_cmd = @import("commands/list.zig");
+const migrate_cmd = @import("commands/migrate.zig");
 const mr_cmd = @import("commands/mr.zig");
 const pr_cmd = @import("commands/pr.zig");
 const prune_cmd = @import("commands/prune.zig");
@@ -65,6 +66,7 @@ pub fn run(
         .remove => remove_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .prune => prune_cmd.run(allocator, args[1..], stdout, stderr),
         .cleanup => cleanup_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
+        .migrate => migrate_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .pr => pr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .mr => mr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .shellenv => shellenv_cmd.run(args[1..], stdout, stderr),

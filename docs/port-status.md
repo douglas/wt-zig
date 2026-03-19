@@ -13,6 +13,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `remove` / `rm`
 - `prune`
 - `cleanup`
+- `migrate`
 - `pr`
 - `mr`
 - `info`
@@ -182,7 +183,6 @@ The major unported areas from the Go CLI are now smaller and more isolated:
 - interactive flows:
   - branch/worktree selection for `checkout`, `remove`, `pr`, `mr`
   - confirmations where the Go CLI prompts
-- migration support
 - any remaining shell-install polish beyond the minimal Unix slice
 
 ## Codex Setup Notes
@@ -193,6 +193,12 @@ The local feature workflow currently uses prompts, not skills:
 - `~/.codex/prompts/close-feature.md`
 
 They exist and are usable, but they are not installed under `~/.codex/skills`.
+
+The prompt workflow now treats `~/projects/<repository>/<branch>/work_log.md` as the durable source of truth for feature state:
+
+- `/start-feature` must create exactly one open feature entry before implementation begins.
+- Normal feature work should verify that open entry still exists before editing code.
+- `/close-feature` must refuse to proceed when there is no open entry and must close that entry at the end.
 
 Separately, broken Claude-ported skills were repaired by:
 
