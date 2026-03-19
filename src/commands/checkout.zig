@@ -5,6 +5,20 @@ const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
 
+pub const CheckoutOptions = struct {
+    hook_prefix: []const u8 = "checkout",
+    prefetch: ?PrefetchOptions = null,
+};
+
+pub const PrefetchOptions = struct {
+    refspec: ?[]const u8 = null,
+};
+
+pub const Outcome = struct {
+    path: []const u8,
+    existed: bool,
+};
+
 pub fn run(
     allocator: std.mem.Allocator,
     cfg: *const config.Resolved,
@@ -17,49 +31,107 @@ pub fn run(
         return 1;
     }
 
-    const branch = args[0];
+    const outcome = checkoutBranch(allocator, cfg, args[0], .{}, stderr) catch |err| switch (err) {
+        error.BranchDoesNotExist => {
+            try stderr.print("branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch\n", .{ args[0], args[0] });
+            return 1;
+        },
+        error.HookCommandFailed => {
+            try stderr.writeAll("pre-checkout hook failed\n");
+            return 1;
+        },
+        error.GitCommandFailed => return 1,
+        else => return err,
+    };
+    defer allocator.free(outcome.path);
+
+    if (outcome.existed) {
+        try stdout.print("Worktree already exists: {s}\n", .{outcome.path});
+        try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+        return 0;
+    }
+
+    try stdout.print("Worktree created at: {s}\n", .{outcome.path});
+    try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+    return 0;
+}
+
+pub fn checkoutBranch(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    branch: []const u8,
+    options: CheckoutOptions,
+    stderr: anytype,
+) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
     defer freeRepoInfo(allocator, &info);
 
-    var listed = worktree.list(allocator, stderr) catch return 1;
+    var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
     defer listed.deinit(allocator);
     for (listed.entries) |entry| {
         if (entry.branch) |existing_branch| {
             if (std.mem.eql(u8, existing_branch, branch)) {
-                try stdout.print("Worktree already exists: {s}\n", .{entry.path});
-                try stdout.print("wt navigating to: {s}\n", .{entry.path});
-                return 0;
+                return .{
+                    .path = try allocator.dupe(u8, entry.path),
+                    .existed = true,
+                };
             }
         }
     }
 
+    if (options.prefetch) |prefetch| {
+        try fetchBranch(allocator, branch, prefetch, stderr);
+    }
+
     if (!(try git_repo.branchExists(allocator, branch))) {
-        try stderr.print("branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch\n", .{ branch, branch });
-        return 1;
+        return error.BranchDoesNotExist;
     }
 
     var env_map = try std.process.getEnvMap(allocator);
     defer env_map.deinit();
 
     const target_path = try path_mod.buildWorktreePath(allocator, cfg, info, branch, &env_map);
-    defer allocator.free(target_path);
+    errdefer allocator.free(target_path);
+
+    const pre_hook = try std.fmt.allocPrint(allocator, "pre_{s}", .{options.hook_prefix});
+    defer allocator.free(pre_hook);
+    const post_hook = try std.fmt.allocPrint(allocator, "post_{s}", .{options.hook_prefix});
+    defer allocator.free(post_hook);
 
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
     defer hook_env.deinit();
 
-    hooks.runHooks(allocator, "pre_checkout", hooks.getHooks(cfg, "pre_checkout"), &hook_env, stderr) catch |err| {
-        try stderr.print("pre-checkout hook failed: {s}\n", .{@errorName(err)});
-        return 1;
-    };
+    try hooks.runHooks(allocator, pre_hook, hooks.getHooks(cfg, pre_hook), &hook_env, stderr);
 
     const success = try runGitWorktreeAdd(allocator, target_path, &.{branch}, stderr);
-    if (!success) return 1;
+    if (!success) return error.GitCommandFailed;
 
-    hooks.runHooks(allocator, "post_checkout", hooks.getHooks(cfg, "post_checkout"), &hook_env, stderr) catch {};
+    hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
 
-    try stdout.print("Worktree created at: {s}\n", .{target_path});
-    try stdout.print("wt navigating to: {s}\n", .{target_path});
-    return 0;
+    return .{
+        .path = target_path,
+        .existed = false,
+    };
+}
+
+fn fetchBranch(
+    allocator: std.mem.Allocator,
+    branch: []const u8,
+    options: PrefetchOptions,
+    stderr: anytype,
+) !void {
+    const primary = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", branch });
+    defer allocator.free(primary);
+    const fetch_branch = try runGitCommand(primary, "failed to fetch branch", stderr);
+    if (fetch_branch) return;
+
+    if (options.refspec) |refspec| {
+        const fallback = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ refspec, branch });
+        defer allocator.free(fallback);
+        const fallback_argv = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", fallback });
+        defer allocator.free(fallback_argv);
+        _ = try runGitCommand(fallback_argv, "failed to fetch branch", stderr);
+    }
 }
 
 fn runGitWorktreeAdd(
@@ -74,16 +146,26 @@ fn runGitWorktreeAdd(
     try args.appendSlice(allocator, trailing_args);
     const owned = try args.toOwnedSlice(allocator);
     defer allocator.free(owned);
+    return runGitCommand(owned, "failed to create worktree", stderr);
+}
 
+fn runGitCommand(
+    argv: []const []const u8,
+    failure_prefix: []const u8,
+    stderr: anytype,
+) !bool {
     const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = owned,
+        .allocator = std.heap.page_allocator,
+        .argv = argv,
     });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
+    defer std.heap.page_allocator.free(result.stdout);
+    defer std.heap.page_allocator.free(result.stderr);
 
     if (result.term == .Exited and result.term.Exited == 0) return true;
-    try stderr.print("failed to create worktree: {s}\n", .{std.mem.trim(u8, result.stderr, " \r\n\t")});
+    const message = std.mem.trim(u8, result.stderr, " \r\n\t");
+    if (message.len != 0) {
+        try stderr.print("{s}: {s}\n", .{ failure_prefix, message });
+    }
     return false;
 }
 

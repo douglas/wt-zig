@@ -11,6 +11,8 @@ pub const Kind = enum {
     remove,
     prune,
     cleanup,
+    pr,
+    mr,
 };
 
 pub const Spec = struct {
@@ -113,6 +115,24 @@ pub const all = [_]Spec{
         .summary = "Remove worktrees for merged branches",
         .usage = "wt cleanup",
         .details = "Find linked worktrees whose branches are merged into the default base branch and remove them.",
+    },
+    .{
+        .kind = .pr,
+        .name = "pr",
+        .aliases = &.{},
+        .display = "pr",
+        .summary = "Checkout a GitHub pull request in a worktree",
+        .usage = "wt pr <number|url>",
+        .details = "Resolve a GitHub PR to its source branch with `gh` and reuse the checkout flow.",
+    },
+    .{
+        .kind = .mr,
+        .name = "mr",
+        .aliases = &.{},
+        .display = "mr",
+        .summary = "Checkout a GitLab merge request in a worktree",
+        .usage = "wt mr <number|url>",
+        .details = "Resolve a GitLab MR to its source branch with `glab` and reuse the checkout flow.",
     },
 };
 
