@@ -116,8 +116,8 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "cleanup",
         .summary = "Remove worktrees for merged branches",
-        .usage = "wt cleanup",
-        .details = "Find linked worktrees whose branches are merged into the default base branch and remove them.",
+        .usage = "wt cleanup [--dry-run]",
+        .details = "Find linked worktrees whose branches are merged into the default base branch, preview them with --dry-run, or remove them.",
     },
     .{
         .kind = .migrate,

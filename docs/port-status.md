@@ -96,6 +96,7 @@ Commit: `fc9ff6d`
 ### Phase 7: remove, prune, and cleanup
 
 - Added `remove`, `prune`, and merged-branch `cleanup`.
+- `cleanup --dry-run` now previews merged-branch removals without deleting worktrees.
 - Reused shared worktree discovery instead of shell text parsing.
 - Added `cleanupWorktreePath` to remove empty repo buckets under `WORKTREE_ROOT`.
 
