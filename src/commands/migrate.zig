@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
@@ -30,6 +31,15 @@ const ParsedArgs = struct {
     force: bool,
 };
 
+const ResultItem = struct {
+    branch: []const u8,
+    from: []const u8,
+    to: ?[]const u8 = null,
+    status: []const u8,
+    primary: bool,
+    reason: ?[]const u8 = null,
+};
+
 pub fn run(
     allocator: std.mem.Allocator,
     cfg: *const config.Resolved,
@@ -38,8 +48,7 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     const parsed = parseArgs(args) catch {
-        try stderr.writeAll("Usage: wt migrate [--force|-f]\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt migrate", "Usage: wt migrate [--force|-f]");
     };
 
     var env_map = try std.process.getEnvMap(allocator);
@@ -220,6 +229,8 @@ fn applyMigratePlan(
     var moved: usize = 0;
     var skipped: usize = 0;
     var failed: usize = 0;
+    var results = std.ArrayList(ResultItem).empty;
+    defer results.deinit(allocator);
 
     for (plan) |item| {
         if (!item.primary) continue;
@@ -227,17 +238,41 @@ fn applyMigratePlan(
         switch (item.action) {
             .skip => {
                 skipped += 1;
-                try stdout.print("Skipped primary checkout: {s}\n", .{item.reason});
+                if (!output.isJson()) try stdout.print("Skipped primary checkout: {s}\n", .{item.reason});
+                try results.append(allocator, .{
+                    .branch = item.branch,
+                    .from = item.from,
+                    .to = item.to,
+                    .status = "skipped",
+                    .primary = true,
+                    .reason = if (item.reason.len == 0) null else item.reason,
+                });
             },
             .move, .move_force => {
                 movePrimaryCheckout(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
                     failed += 1;
-                    try stdout.print("Failed primary checkout: {s}\n", .{@errorName(err)});
+                    if (!output.isJson()) try stdout.print("Failed primary checkout: {s}\n", .{@errorName(err)});
+                    try results.append(allocator, .{
+                        .branch = item.branch,
+                        .from = item.from,
+                        .to = item.to,
+                        .status = "failed",
+                        .primary = true,
+                        .reason = @errorName(err),
+                    });
                     continue;
                 };
 
                 moved += 1;
-                try stdout.print("Moved primary checkout: {s} -> {s}\n", .{ item.from, item.to.? });
+                if (!output.isJson()) try stdout.print("Moved primary checkout: {s} -> {s}\n", .{ item.from, item.to.? });
+                try results.append(allocator, .{
+                    .branch = item.branch,
+                    .from = item.from,
+                    .to = item.to,
+                    .status = "moved",
+                    .primary = true,
+                    .reason = if (item.reason.len == 0) null else item.reason,
+                });
             },
         }
     }
@@ -248,27 +283,61 @@ fn applyMigratePlan(
         switch (item.action) {
             .skip => {
                 skipped += 1;
-                try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
+                if (!output.isJson()) try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
+                try results.append(allocator, .{
+                    .branch = item.branch,
+                    .from = item.from,
+                    .to = item.to,
+                    .status = "skipped",
+                    .primary = false,
+                    .reason = if (item.reason.len == 0) null else item.reason,
+                });
             },
             .move, .move_force => {
                 moveLinkedWorktree(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
                     failed += 1;
-                    try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
+                    if (!output.isJson()) try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
+                    try results.append(allocator, .{
+                        .branch = item.branch,
+                        .from = item.from,
+                        .to = item.to,
+                        .status = "failed",
+                        .primary = false,
+                        .reason = @errorName(err),
+                    });
                     continue;
                 };
 
                 moved += 1;
-                try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
+                if (!output.isJson()) try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
+                try results.append(allocator, .{
+                    .branch = item.branch,
+                    .from = item.from,
+                    .to = item.to,
+                    .status = "moved",
+                    .primary = false,
+                    .reason = if (item.reason.len == 0) null else item.reason,
+                });
             },
         }
     }
 
-    try stdout.print(
-        "\nMigration complete: {d} moved, {d} skipped, {d} failed\n",
-        .{ moved, skipped, failed },
-    );
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt migrate", .{
+            .force = force,
+            .total = plan.len,
+            .migrated = moved,
+            .skipped = skipped,
+            .failed = failed,
+            .results = results.items,
+        });
+    } else {
+        try stdout.print(
+            "\nMigration complete: {d} moved, {d} skipped, {d} failed\n",
+            .{ moved, skipped, failed },
+        );
+    }
 
-    _ = force;
     if (failed > 0) return 1;
     return 0;
 }

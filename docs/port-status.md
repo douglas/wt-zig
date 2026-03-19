@@ -4,7 +4,7 @@ This document is the durable handoff for the Zig port of [`/home/douglas/src/wt`
 
 ## Current State
 
-The port is intentionally incremental, not a line-by-line Cobra rewrite. The current Zig CLI already covers the core non-interactive worktree lifecycle plus initial shell integration:
+The port is intentionally incremental, not a line-by-line Cobra rewrite. The current Zig CLI now covers the full current `wt` command surface in both text mode and the global `--format json` mode:
 
 - `help`, `version`, `list`
 - `config show`, `config path`, `config init`
@@ -28,20 +28,23 @@ The port currently breaks down into these modules:
 - `src/app.zig`: root argument parsing and native command dispatch
 - `src/command.zig`: command registry and help metadata
 - `src/config.zig`: config resolution, TOML-subset parsing, and starter config generation
+- `src/output.zig`: global text/JSON output mode helpers and help/error envelopes
 - `src/path.zig`: strategy defaults, token rendering, directory creation, and worktree-path cleanup
 - `src/git/worktree.zig`: `git worktree list --porcelain` parsing
-- `src/git/repo.zig`: repo discovery, default base resolution, branch checks, and merged-branch lookup
-- `src/git/pr.zig`: PR/MR identifier parsing and `gh` / `glab` branch lookup
+- `src/git/repo.zig`: repo discovery, default base resolution, branch checks, merged-branch lookup, and interactive branch/worktree inventories
+- `src/git/pr.zig`: PR/MR identifier parsing, open-item discovery, and `gh` / `glab` branch lookup
 - `src/hooks.zig`: hook lookup, environment construction, and pre/post execution
+- `src/prompt.zig`: text-mode selection and confirmation prompts
 - `src/commands/*.zig`: thin command entry points around the shared layers
 
 Important design decisions:
 
 - The CLI uses a Zig-native dispatcher instead of a Cobra-style command tree.
+- Root parsing strips `--config` and `--format` anywhere in argv before dispatch so command handlers stay focused on command-local arguments.
 - `git worktree list --porcelain` is the source of truth for worktree discovery.
 - Shared behavior is pulled downward into reusable helpers when a second command needs it.
   Example: `checkoutBranch` in `src/commands/checkout.zig` now underpins plain checkout plus PR/MR checkout.
-- The first slices bias toward explicit, non-interactive behavior so each phase can be verified with real temp repos.
+- Interactive selection now follows the Go raw-input behavior more closely, while still keeping stdin fallback for tests and automation harnesses.
 
 ## Completed Phases
 
@@ -153,8 +156,28 @@ Commit: `da36846`
 ### Phase 14: examples catalog
 
 - Added `wt examples`.
-- Ported a text-mode examples catalog covering the currently ported command set.
-- Included reference JSON snippets from the Go CLI as forward-looking documentation for the still-unported global JSON mode.
+- Ported a text-mode examples catalog covering the current command set.
+
+Commit: `2ee74d4`
+
+### Phase 15: full parity for JSON and interactive flows
+
+- Added root-level `--format json` parsing and JSON help/error envelopes.
+- Added interactive selectors for `checkout`, `remove`, `pr`, and `mr`.
+- Added confirmation prompts and `--force` support for `cleanup`.
+- Added JSON output support across `version`, `list`, `config`, `checkout`, `create`, `remove`, `cleanup`, `migrate`, `pr`, `mr`, `prune`, `shellenv`, `info`, `init`, and `examples`.
+- Added `wt config init --force`.
+- Upgraded the examples catalog and help metadata to describe the now-implemented JSON and interactive behavior.
+
+### Phase 16: exact parity harness and compatibility fixes
+
+- Added `scripts/parity-harness.sh` to build both CLIs, run the Go e2e harness against each binary, report Zig-only failures relative to the Go baseline, and compare representative direct outputs for root help, version, shellenv, and unknown-command errors.
+- Fixed repo-name resolution inside linked worktrees by preferring `git rev-parse --git-common-dir` over the current worktree path when deriving `repo.Name`.
+- Fixed a lifetime bug in remote-derived repo metadata so parsed `origin` host/owner/name values no longer point into freed buffers.
+- Tightened prompt behavior around `WT_USE_STDIN=1`, raw numeric selection, and cancellation semantics to better match the Go prompt layer.
+- Fixed remaining parity mismatches in `checkout` fetch fallback, `cleanup --force` wording, `help` JSON command paths, and `examples` output/argument rejection.
+- Verified the full Go scenario suite now matches the Go baseline exactly in this environment: both binaries report `Passed: 88`, `Failed: 2`, `Skipped: 4`.
+- The two remaining harness failures are inherited from the Go baseline here: `config/config_show_defaults` and `init/init_uninstall`.
 
 ## Verification Patterns
 
@@ -180,7 +203,9 @@ Useful smoke-test patterns that already proved valuable:
 - temp git repos for `checkout`, `create`, `remove`, and `cleanup`
 - temp bare `origin` repos plus stub `gh` / `glab` executables for `pr` and `mr`
 - temp home directories for `init` and temp config paths for `config init`
+- stdin-driven interactive selection with `WT_USE_STDIN=1`
 - disabling signing in temp repos with `git config commit.gpgsign false`
+- running `./scripts/parity-harness.sh` to compare full e2e results against the Go baseline instead of assuming zero failing scenarios
 
 ## Important Learnings
 
@@ -190,16 +215,18 @@ Useful smoke-test patterns that already proved valuable:
 - Shared command behavior should move into reusable helpers only after a second command needs it.
   This kept the first slices simple while still allowing later reuse.
 - For PR/MR checkout, `git fetch origin <branch>` is not enough for every workflow; fallback refspec fetches matter for fork-style refs.
+- Root JSON output and command-local interactive behavior are easier to maintain when they are centralized in small shared helpers instead of duplicated inside each command.
 
 ## Remaining Port Gaps
 
-The major unported areas from the Go CLI are now smaller and more isolated:
+No intentional feature gaps remain versus the current Go CLI command surface.
 
-- interactive flows:
-  - branch/worktree selection for `checkout`, `remove`, `pr`, `mr`
-  - confirmations where the Go CLI prompts
-- global JSON output mode
-- any remaining shell-install polish beyond the minimal Unix slice
+Any further work should be treated as:
+
+- bug-fix parity where Zig behavior diverges from Go in edge cases
+- platform polish, especially broader Windows/PowerShell verification
+- output-format refinements where the shape is compatible but not byte-for-byte identical
+- chasing down the two current Go-baseline harness failures if they are fixed upstream in `/home/douglas/src/wt`
 
 ## Codex Setup Notes
 

@@ -6,25 +6,27 @@ The detailed phase history, verification patterns, and remaining gaps live in [d
 
 ## Current Scope
 
-The current slices keep the scope intentionally small:
+The current port now covers the full user-facing command surface from `wt`, including text and JSON output modes:
 
 - bootstrap a Zig 0.15.2 project
-- provide a native command dispatcher
+- provide a native command dispatcher with global `--format <text|json>` support
 - add config loading with defaults, `WT_CONFIG`, `--config`, and env overrides
-- add `wt config init` to create a starter config file at the resolved path
+- add `wt config init [--force]` to create or replace a starter config file at the resolved path
 - resolve effective worktree patterns from strategy aliases and custom templates
-- add non-interactive `checkout` and `create` flows on top of the path layer
+- add `checkout` and `create` flows on top of the path layer
 - add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
 - run configured pre/post hooks for `checkout`, `create`, `remove`, `pr`, and `mr`
-- add non-interactive `remove`, `prune`, and merged-branch `cleanup` flows
-- add non-interactive `pr` and `mr` flows that resolve branches through `gh` and `glab`
-- add `wt examples` to print a full examples catalog for the current ported command set
+- add `remove`, `prune`, `cleanup`, and `migrate`
+- add `pr` and `mr` flows that resolve branches through `gh` and `glab`
+- add interactive selectors for `checkout`, `remove`, `pr`, and `mr` in text mode
+- add confirmation prompts for `cleanup` in text mode
+- add `wt examples` to print the full examples catalog in text or JSON form
 - add OS-appropriate `shellenv` output for bash/zsh and PowerShell integration
 - add `init` for bash, zsh, and PowerShell shell-profile installation of the `shellenv` block
 - implement `help`, `version`, and `list`
 - make `list` use `git worktree list --porcelain`
 - expose `wt config show` and `wt config path`, including effective pattern display
-- leave clean seams for later interactive prompts, shell install flows, migration, and richer remote features
+- keep shared JSON/output, prompt, and git helpers factored for future maintenance
 
 ## Commands
 
@@ -33,22 +35,24 @@ wt help
 wt version
 wt list
 wt ls
-wt checkout <branch>
-wt co <branch>
+wt checkout [branch]
+wt co [branch]
 wt create <branch> [base-branch]
-wt remove <branch>
-wt rm <branch>
+wt remove [branch] [--force|-f]
+wt rm [branch] [--force|-f]
 wt prune
-wt cleanup [--dry-run]
-wt pr <number|url>
-wt mr <number|url>
+wt cleanup [--dry-run] [--force|-f]
+wt migrate [--force|-f]
+wt pr [number|url]
+wt mr [number|url]
 wt examples
 wt shellenv
 wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]
 wt info
 wt config show
 wt config path
-wt config init
+wt config init [--force]
+wt --format json <command>
 ```
 
 ## Development
@@ -61,4 +65,5 @@ zig build run -- list
 zig build run -- config show
 zig build test
 zig fmt --check .
+./scripts/parity-harness.sh
 ```

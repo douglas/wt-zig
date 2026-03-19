@@ -1,6 +1,7 @@
 const std = @import("std");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
+const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
@@ -13,8 +14,7 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     if (args.len == 0 or args.len > 2) {
-        try stderr.writeAll("Usage: wt create <branch> [base-branch]\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt create", "Usage: wt create <branch> [base-branch]");
     }
 
     const branch = args[0];
@@ -29,8 +29,18 @@ pub fn run(
     for (listed.entries) |entry| {
         if (entry.branch) |existing_branch| {
             if (std.mem.eql(u8, existing_branch, branch)) {
-                try stdout.print("Worktree already exists: {s}\n", .{entry.path});
-                try stdout.print("wt navigating to: {s}\n", .{entry.path});
+                if (output.isJson()) {
+                    try output.emitSuccess(allocator, stdout, "wt create", .{
+                        .status = "exists",
+                        .branch = branch,
+                        .base = base,
+                        .path = entry.path,
+                        .navigate_to = entry.path,
+                    });
+                } else {
+                    try stdout.print("Worktree already exists: {s}\n", .{entry.path});
+                    try stdout.print("wt navigating to: {s}\n", .{entry.path});
+                }
                 return 0;
             }
         }
@@ -46,7 +56,11 @@ pub fn run(
     defer hook_env.deinit();
 
     hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr) catch |err| {
-        try stderr.print("pre-create hook failed: {s}\n", .{@errorName(err)});
+        if (output.isJson()) {
+            output.emitError(stdout, "wt create", "pre-create hook failed") catch {};
+        } else {
+            stderr.print("pre-create hook failed: {s}\n", .{@errorName(err)}) catch {};
+        }
         return 1;
     };
 
@@ -55,8 +69,18 @@ pub fn run(
 
     hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 
-    try stdout.print("Worktree created at: {s}\n", .{target_path});
-    try stdout.print("wt navigating to: {s}\n", .{target_path});
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt create", .{
+            .status = "created",
+            .branch = branch,
+            .base = base,
+            .path = target_path,
+            .navigate_to = target_path,
+        });
+    } else {
+        try stdout.print("Worktree created at: {s}\n", .{target_path});
+        try stdout.print("wt navigating to: {s}\n", .{target_path});
+    }
     return 0;
 }
 

@@ -1,4 +1,5 @@
 const std = @import("std");
+const output = @import("../output.zig");
 
 const UsageExample = struct {
     command: []const u8,
@@ -34,7 +35,7 @@ const checkout_examples = [_]UsageExample{
         .preconditions = &.{"Run inside a git repository."},
         .side_effects = &.{
             "In text mode with shellenv, the wrapper may auto-navigate to the target path.",
-            "JSON examples shown here are reference output from the Go CLI and document the remaining JSON gap in wt-zig.",
+            "In --format json mode, shell wrappers do not auto-navigate.",
         },
         .failure_modes = &.{
             "Branch does not exist: create it first or use wt create.",
@@ -44,11 +45,11 @@ const checkout_examples = [_]UsageExample{
     },
     .{
         .command = "wt --format json checkout feature-branch",
-        .purpose = "Reference machine-readable checkout flow for future JSON support.",
+        .purpose = "Machine-readable checkout flow for automation.",
         .outcome = "JSON envelope describing whether the worktree was created or already existed, including navigate_to.",
         .exit_code = "0 on success; non-zero on failure.",
         .json_example = "{\"ok\":true,\"command\":\"wt checkout\",\"data\":{\"status\":\"exists\",\"branch\":\"feature-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/feature-branch\",\"navigate_to\":\"$WORKTREE_ROOT/<repo>/feature-branch\"}}",
-        .notes = &.{"wt-zig does not implement global --format json yet; this example is forward-looking documentation copied from wt."},
+        .notes = &.{"Parse data.navigate_to if your tool wants to change directories explicitly."},
     },
 };
 
@@ -60,7 +61,7 @@ const create_examples = [_]UsageExample{
         .exit_code = "0 on success; non-zero if the base is missing or the branch/path conflicts.",
         .text_example = "Worktree created at: $WORKTREE_ROOT/<repo>/my-feature\nwt navigating to: $WORKTREE_ROOT/<repo>/my-feature",
         .path_example = "global: $WORKTREE_ROOT/<repo>/my-feature\nsibling-repo: <repo-main-parent>/<repo>-my-feature\nparent-branches: <repo-main-parent>/my-feature\nparent-worktrees: <repo-main-parent>/<repo>.worktrees/my-feature\ncustom pattern: $WORKTREE_ROOT/custom/<repo>/my-feature",
-        .path_basis = "Static placeholders for one branch across strategies. <repo-main-parent> contains the main checkout at <repo-main-parent>/<repo>.",
+        .path_basis = "Static placeholders for one branch name across strategies. <repo-main-parent> contains the main checkout at <repo-main-parent>/<repo>.",
         .preconditions = &.{"Repository has main or master, or pass an explicit base branch."},
         .side_effects = &.{
             "Runs configured pre_create and post_create hooks.",
@@ -74,11 +75,11 @@ const create_examples = [_]UsageExample{
     },
     .{
         .command = "wt --format json create my-feature",
-        .purpose = "Reference automation-friendly branch/worktree creation output.",
+        .purpose = "Automation-friendly branch/worktree creation output.",
         .outcome = "JSON envelope with status, branch, base, path, and navigate_to.",
         .exit_code = "0 on success; non-zero on failure.",
         .json_example = "{\"ok\":true,\"command\":\"wt create\",\"data\":{\"status\":\"created\",\"branch\":\"my-feature\",\"base\":\"main\",\"path\":\"$WORKTREE_ROOT/<repo>/my-feature\",\"navigate_to\":\"$WORKTREE_ROOT/<repo>/my-feature\"}}",
-        .notes = &.{"JSON mode remains unported in wt-zig."},
+        .side_effects = &.{"No auto-navigation marker is printed in JSON mode."},
     },
 };
 
@@ -214,11 +215,11 @@ const init_examples = [_]UsageExample{
     },
     .{
         .command = "wt --format json init --dry-run",
-        .purpose = "Reference machine-readable dry-run output for shell integration setup.",
+        .purpose = "Machine-readable dry-run output for shell integration setup.",
         .outcome = "JSON envelope describing the detected shell, config path, and action.",
         .exit_code = "0 on success; non-zero on failure.",
         .json_example = "{\"ok\":true,\"command\":\"wt init\",\"data\":{\"status\":\"planned\",\"shell\":\"bash\",\"config_path\":\"~/.bashrc\",\"dry_run\":true,\"operation\":\"install\"}}",
-        .notes = &.{"In future JSON mode, use an explicit shell argument in automation for deterministic behavior."},
+        .notes = &.{"Use an explicit shell argument in automation for deterministic behavior."},
     },
 };
 
@@ -290,7 +291,7 @@ const info_examples = [_]UsageExample{
     },
     .{
         .command = "wt --format json info",
-        .purpose = "Reference structured config metadata for future automation.",
+        .purpose = "Structured config metadata for automation.",
         .outcome = "JSON envelope with config, strategies, pattern variables, and hooks.",
         .exit_code = "0 on success.",
         .json_example = "{\"ok\":true,\"command\":\"wt info\",\"data\":{\"config\":{\"strategy\":\"global\",\"pattern\":\"{.worktreeRoot}/{.repo.Name}/{.branch}\",\"root\":\"$WORKTREE_ROOT\"}}}",
@@ -318,7 +319,7 @@ const config_examples = [_]UsageExample{
     },
     .{
         .command = "wt --format json config show",
-        .purpose = "Reference structured config introspection for future tools.",
+        .purpose = "Structured config introspection for tools.",
         .outcome = "JSON envelope with effective values and source information.",
         .exit_code = "0 on success.",
         .json_example = "{\"ok\":true,\"command\":\"wt config show\",\"data\":{\"effective\":{\"root\":{\"value\":\"$WORKTREE_ROOT\",\"source\":\"env WORKTREE_ROOT\"}}}}",
@@ -362,8 +363,21 @@ const topics = [_]Topic{
 
 pub fn run(args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
     if (args.len != 0) {
-        try stderr.writeAll("Usage: wt examples\n");
-        return 1;
+        var message_buffer: [256]u8 = undefined;
+        const message = try std.fmt.bufPrint(&message_buffer, "unknown command: {s}", .{args[0]});
+        return output.usageError(stdout, stderr, "wt", message);
+    }
+
+    if (output.isJson()) {
+        try output.emitSuccess(std.heap.page_allocator, stdout, "wt examples", .{
+            .catalog_scope = "full",
+            .notes = .{
+                "The examples catalog is intentionally full and unfiltered.",
+                "In --format json mode, shell wrappers must not auto-navigate.",
+            },
+            .topics = topics,
+        });
+        return 0;
     }
 
     try renderText(stdout);
@@ -376,7 +390,7 @@ pub fn renderText(writer: anytype) !void {
         \\
         \\Runnable usage examples with expected outcomes.
         \\This command intentionally prints the full catalog; filter with rg if desired.
-        \\Note: JSON snippets below are reference examples from the Go CLI and document output planned for a later wt-zig phase.
+        \\Note: --format json output is machine-readable and does not auto-navigate your shell.
         \\
     );
 
@@ -436,7 +450,7 @@ test "examples rejects positional arguments" {
 
     const exit_code = try run(&.{"create"}, &stdout, &stderr);
     try std.testing.expectEqual(@as(u8, 1), exit_code);
-    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "Usage: wt examples") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "unknown command: create") != null);
 }
 
 test "examples text includes catalog topics and json note" {
@@ -448,6 +462,6 @@ test "examples text includes catalog topics and json note" {
 
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "checkout: Checkout an existing branch in a worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "examples: Show detailed command examples and outcomes") != null);
-    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "JSON snippets below are reference examples from the Go CLI") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "--format json output is machine-readable and does not auto-navigate your shell.") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "wt --format json create my-feature") != null);
 }

@@ -5,6 +5,11 @@ pub const RemoteType = enum {
     gitlab,
 };
 
+pub const OpenItem = struct {
+    id: []u8,
+    label: []u8,
+};
+
 pub fn resolveBranchName(
     allocator: std.mem.Allocator,
     remote_type: RemoteType,
@@ -43,6 +48,21 @@ pub fn label(remote_type: RemoteType) []const u8 {
         .github => "PR",
         .gitlab => "MR",
     };
+}
+
+pub fn getOpenItems(allocator: std.mem.Allocator, remote_type: RemoteType) ![]OpenItem {
+    return switch (remote_type) {
+        .github => getOpenGitHubItems(allocator),
+        .gitlab => getOpenGitLabItems(allocator),
+    };
+}
+
+pub fn freeOpenItems(allocator: std.mem.Allocator, items: []OpenItem) void {
+    for (items) |item| {
+        allocator.free(item.id);
+        allocator.free(item.label);
+    }
+    allocator.free(items);
 }
 
 fn parseIdentifier(
@@ -139,6 +159,73 @@ fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
     return allocator.dupe(u8, parsed.value.source_branch);
 }
 
+fn getOpenGitHubItems(allocator: std.mem.Allocator) ![]OpenItem {
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "gh", "pr", "list", "--json", "number,title", "--jq", ".[] | \"\\(.number)\\t\\(.title)\"" },
+    }) catch |err| switch (err) {
+        error.FileNotFound => return error.MissingPlatformCli,
+        else => return err,
+    };
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    if (result.term != .Exited or result.term.Exited != 0) return error.PlatformLookupFailed;
+    return parseTabSeparatedItems(allocator, result.stdout, "#");
+}
+
+fn getOpenGitLabItems(allocator: std.mem.Allocator) ![]OpenItem {
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "glab", "mr", "list" },
+    }) catch |err| switch (err) {
+        error.FileNotFound => return error.MissingPlatformCli,
+        else => return err,
+    };
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    if (result.term != .Exited or result.term.Exited != 0) return error.PlatformLookupFailed;
+    return parseGitLabListItems(allocator, result.stdout);
+}
+
+fn parseTabSeparatedItems(allocator: std.mem.Allocator, output: []const u8, prefix: []const u8) ![]OpenItem {
+    var items = std.ArrayList(OpenItem).empty;
+    errdefer items.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \r\n\t");
+        if (trimmed.len == 0) continue;
+        const tab = std.mem.indexOfScalar(u8, trimmed, '\t') orelse continue;
+        const id = std.mem.trim(u8, trimmed[0..tab], " \t");
+        const title = std.mem.trim(u8, trimmed[tab + 1 ..], " \t");
+        try items.append(allocator, .{
+            .id = try allocator.dupe(u8, id),
+            .label = try std.fmt.allocPrint(allocator, "{s}{s}: {s}", .{ prefix, id, title }),
+        });
+    }
+    return items.toOwnedSlice(allocator);
+}
+
+fn parseGitLabListItems(allocator: std.mem.Allocator, output: []const u8) ![]OpenItem {
+    var items = std.ArrayList(OpenItem).empty;
+    errdefer items.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \r\n\t");
+        if (trimmed.len == 0 or trimmed[0] != '!') continue;
+        var index: usize = 1;
+        while (index < trimmed.len and std.ascii.isDigit(trimmed[index])) : (index += 1) {}
+        if (index == 1) continue;
+        const id = trimmed[1..index];
+        const title_start = std.mem.indexOfNonePos(u8, trimmed, index, " \t") orelse continue;
+        const title = std.mem.trim(u8, trimmed[title_start..], " \t");
+        try items.append(allocator, .{
+            .id = try allocator.dupe(u8, id),
+            .label = try std.fmt.allocPrint(allocator, "!{s}: {s}", .{ id, title }),
+        });
+    }
+    return items.toOwnedSlice(allocator);
+}
+
 test "parseIdentifier handles number and URLs" {
     const allocator = std.testing.allocator;
 
@@ -158,4 +245,13 @@ test "parseIdentifier handles number and URLs" {
 test "parseIdentifier rejects malformed input" {
     const allocator = std.testing.allocator;
     try std.testing.expectError(error.InvalidPullRequestInput, parseIdentifier(allocator, .github, "feature/test"));
+}
+
+test "parseTabSeparatedItems formats github labels" {
+    const allocator = std.testing.allocator;
+    const items = try parseTabSeparatedItems(allocator, "123\tFix it\n", "#");
+    defer freeOpenItems(allocator, items);
+    try std.testing.expectEqual(@as(usize, 1), items.len);
+    try std.testing.expectEqualStrings("123", items[0].id);
+    try std.testing.expectEqualStrings("#123: Fix it", items[0].label);
 }

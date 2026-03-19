@@ -164,8 +164,8 @@ pub fn resolveConfigPath(
     return std.fs.path.join(allocator, &.{ dir, "config.toml" });
 }
 
-pub fn writeDefaultConfig(path: []const u8) !void {
-    if (fileExists(path)) return error.ConfigFileAlreadyExists;
+pub fn writeDefaultConfig(path: []const u8, force: bool) !void {
+    if (fileExists(path) and !force) return error.ConfigFileAlreadyExists;
 
     const dir = std.fs.path.dirname(path) orelse return error.InvalidConfigPath;
     try makePathAbsolute(dir);
@@ -486,7 +486,7 @@ test "writeDefaultConfig creates parent directories and file" {
     const config_path = try std.fs.path.join(allocator, &.{ root, "nested", "wt", "config.toml" });
     defer allocator.free(config_path);
 
-    try writeDefaultConfig(config_path);
+    try writeDefaultConfig(config_path, false);
 
     const data = try std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024);
     defer allocator.free(data);
@@ -505,5 +505,5 @@ test "writeDefaultConfig refuses to overwrite existing file" {
     defer allocator.free(config_path);
 
     try writeFileAbsolute(config_path, "existing\n");
-    try std.testing.expectError(error.ConfigFileAlreadyExists, writeDefaultConfig(config_path));
+    try std.testing.expectError(error.ConfigFileAlreadyExists, writeDefaultConfig(config_path, false));
 }

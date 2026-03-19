@@ -1,7 +1,9 @@
 const std = @import("std");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
+const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
+const prompt = @import("../prompt.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
 
@@ -26,24 +28,80 @@ pub fn run(
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
-    if (args.len != 1) {
-        try stderr.writeAll("Usage: wt checkout <branch>\n");
-        return 1;
+    var branch: []const u8 = undefined;
+    var owned_branches: ?[][]u8 = null;
+    defer if (owned_branches) |branches| {
+        for (branches) |candidate| allocator.free(candidate);
+        allocator.free(branches);
+    };
+
+    switch (args.len) {
+        0 => {
+            if (output.isJson()) {
+                const message = "wt checkout with --format json requires an explicit branch argument";
+                try output.emitError(stdout, "wt checkout", message);
+                return 1;
+            }
+
+            const branches = git_repo.getAvailableBranches(allocator) catch {
+                try stderr.writeAll("failed to get branches\n");
+                return 1;
+            };
+            owned_branches = branches;
+            if (branches.len == 0) {
+                try stderr.writeAll("no available branches to checkout\n");
+                return 1;
+            }
+
+            const selection = prompt.selectItem(allocator, "Select branch to checkout", branches, stderr) catch |err| switch (err) {
+                error.SelectionCancelled => {
+                    try stderr.writeAll("selection cancelled\n");
+                    return 1;
+                },
+                else => {
+                    try stderr.writeAll("invalid selection\n");
+                    return 1;
+                },
+            };
+            branch = selection.value;
+        },
+        1 => branch = args[0],
+        else => return output.usageError(stdout, stderr, "wt checkout", "Usage: wt checkout [branch]"),
     }
 
-    const outcome = checkoutBranch(allocator, cfg, args[0], .{}, stderr) catch |err| switch (err) {
+    const outcome = checkoutBranch(allocator, cfg, branch, .{}, stderr) catch |err| switch (err) {
         error.BranchDoesNotExist => {
-            try stderr.print("branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch\n", .{ args[0], args[0] });
+            if (output.isJson()) {
+                const message = try std.fmt.allocPrint(allocator, "branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch", .{ branch, branch });
+                defer allocator.free(message);
+                try output.emitError(stdout, "wt checkout", message);
+            } else {
+                try stderr.print("branch '{s}' does not exist\nUse 'wt create {s}' to create a new branch\n", .{ branch, branch });
+            }
             return 1;
         },
         error.HookCommandFailed => {
-            try stderr.writeAll("pre-checkout hook failed\n");
+            if (output.isJson()) {
+                try output.emitError(stdout, "wt checkout", "pre-checkout hook failed");
+            } else {
+                try stderr.writeAll("pre-checkout hook failed\n");
+            }
             return 1;
         },
         error.GitCommandFailed => return 1,
         else => return err,
     };
     defer allocator.free(outcome.path);
+
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt checkout", .{
+            .status = if (outcome.existed) "exists" else "created",
+            .branch = branch,
+            .path = outcome.path,
+            .navigate_to = outcome.path,
+        });
+        return 0;
+    }
 
     if (outcome.existed) {
         try stdout.print("Worktree already exists: {s}\n", .{outcome.path});
@@ -122,15 +180,31 @@ fn fetchBranch(
 ) !void {
     const primary = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", branch });
     defer allocator.free(primary);
-    const fetch_branch = try runGitCommand(primary, "failed to fetch branch", stderr);
-    if (fetch_branch) return;
+    const primary_result = try runGitCommandResult(allocator, primary);
+    defer allocator.free(primary_result.stderr);
+    defer allocator.free(primary_result.stdout);
+    if (primary_result.success) return;
 
     if (options.refspec) |refspec| {
         const fallback = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ refspec, branch });
         defer allocator.free(fallback);
         const fallback_argv = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", fallback });
         defer allocator.free(fallback_argv);
-        _ = try runGitCommand(fallback_argv, "failed to fetch branch", stderr);
+        const fallback_result = try runGitCommandResult(allocator, fallback_argv);
+        defer allocator.free(fallback_result.stderr);
+        defer allocator.free(fallback_result.stdout);
+        if (fallback_result.success) return;
+
+        const fallback_message = std.mem.trim(u8, fallback_result.stderr, " \r\n\t");
+        if (fallback_message.len != 0) {
+            try stderr.print("failed to fetch branch: {s}\n", .{fallback_message});
+        }
+        return;
+    }
+
+    const primary_message = std.mem.trim(u8, primary_result.stderr, " \r\n\t");
+    if (primary_message.len != 0) {
+        try stderr.print("failed to fetch branch: {s}\n", .{primary_message});
     }
 }
 
@@ -154,19 +228,37 @@ fn runGitCommand(
     failure_prefix: []const u8,
     stderr: anytype,
 ) !bool {
-    const result = try std.process.Child.run(.{
-        .allocator = std.heap.page_allocator,
-        .argv = argv,
-    });
+    const result = try runGitCommandResult(std.heap.page_allocator, argv);
     defer std.heap.page_allocator.free(result.stdout);
     defer std.heap.page_allocator.free(result.stderr);
 
-    if (result.term == .Exited and result.term.Exited == 0) return true;
+    if (result.success) return true;
     const message = std.mem.trim(u8, result.stderr, " \r\n\t");
     if (message.len != 0) {
         try stderr.print("{s}: {s}\n", .{ failure_prefix, message });
     }
     return false;
+}
+
+const GitCommandResult = struct {
+    success: bool,
+    stdout: []u8,
+    stderr: []u8,
+};
+
+fn runGitCommandResult(
+    allocator: std.mem.Allocator,
+    argv: []const []const u8,
+) !GitCommandResult {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv,
+    });
+    return .{
+        .success = result.term == .Exited and result.term.Exited == 0,
+        .stdout = result.stdout,
+        .stderr = result.stderr,
+    };
 }
 
 fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {

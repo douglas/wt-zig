@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const output = @import("../output.zig");
 const path = @import("../path.zig");
 
 pub fn run(cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
@@ -8,6 +9,39 @@ pub fn run(cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
     const config_status = if (cfg.config_file_found) "found" else "not found, using defaults";
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "unknown";
+
+    if (output.isJson()) {
+        try output.emitSuccess(std.heap.page_allocator, stdout, "wt info", .{
+            .config = .{
+                .path = cfg.config_file_path,
+                .status = config_status,
+                .strategy = cfg.strategy,
+                .pattern = pattern,
+                .root = cfg.root,
+                .separator = cfg.separator,
+            },
+            .strategies = .{
+                .{ .name = "global", .pattern = "{.worktreeRoot}/{.repo.Name}/{.branch}" },
+                .{ .name = "sibling-repo", .pattern = "{.repo.Main}/../{.repo.Name}-{.branch}" },
+                .{ .name = "parent-branches", .pattern = "{.repo.Main}/../{.branch}" },
+                .{ .name = "parent-worktrees", .pattern = "{.repo.Main}/../{.repo.Name}.worktrees/{.branch}" },
+                .{ .name = "parent-dotdir", .pattern = "{.repo.Main}/../.worktrees/{.branch}" },
+                .{ .name = "inside-dotdir", .pattern = "{.repo.Main}/.worktrees/{.branch}" },
+                .{ .name = "custom", .pattern = "requires pattern setting" },
+            },
+            .pattern_variables = .{
+                "{.repo.Name}",
+                "{.repo.Main}",
+                "{.repo.Owner}",
+                "{.repo.Host}",
+                "{.branch}",
+                "{.worktreeRoot}",
+                "{.env.VARNAME}",
+            },
+            .hooks = cfg.hooks,
+        });
+        return 0;
+    }
 
     try stdout.print(
         \\Config:    {s} ({s})

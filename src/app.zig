@@ -1,6 +1,7 @@
 const std = @import("std");
 const command = @import("command.zig");
 const config = @import("config.zig");
+const output = @import("output.zig");
 const cleanup_cmd = @import("commands/cleanup.zig");
 const config_cmd = @import("commands/config.zig");
 const checkout_cmd = @import("commands/checkout.zig");
@@ -25,39 +26,49 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     const raw_args = if (argv.len > 1) argv[1..] else &.{};
-    const parsed = parseRootArgs(raw_args) catch |err| {
+    var parsed = parseRootArgs(allocator, raw_args) catch |err| {
         switch (err) {
             error.MissingConfigPath => try stderr.writeAll("Missing value for --config\n"),
+            error.MissingFormatValue => try stderr.writeAll("Missing value for --format\n"),
+            error.UnsupportedFormatValue => try stderr.writeAll("unsupported --format value (supported: text, json)\n"),
+            error.OutOfMemory => return err,
         }
         return 1;
     };
+    defer parsed.deinit(allocator);
+    output.setFormat(parsed.output_format);
+    defer output.setFormat(.text);
     const args = parsed.positional;
-
-    if (parsed.root_help or args.len == 0 or isHelpFlag(args[0])) {
-        try help_cmd.printRoot(stdout);
-        return 0;
-    }
 
     var loaded_config = try config.load(allocator, .{ .cli_config_path = parsed.cli_config_path });
     defer loaded_config.deinit();
 
+    if (parsed.root_help or args.len == 0 or isHelpFlag(args[0])) {
+        try help_cmd.printRoot(allocator, &loaded_config.resolved, stdout);
+        return 0;
+    }
+
     if (std.mem.eql(u8, args[0], "help")) {
-        return help_cmd.run(args[1..], stdout, stderr);
+        return help_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr);
     }
 
     const spec = command.find(args[0]) orelse {
-        try stderr.print("Unknown command: {s}\n\n", .{args[0]});
-        try help_cmd.printRoot(stderr);
+        if (output.isJson()) {
+            try stderr.print("unknown command \"{s}\" for \"wt\"\n", .{args[0]});
+        } else {
+            try stderr.print("Unknown command: {s}\n\n", .{args[0]});
+            try help_cmd.printRoot(allocator, &loaded_config.resolved, stderr);
+        }
         return 1;
     };
 
     if (args.len > 1 and isHelpFlag(args[1])) {
-        try help_cmd.printCommand(spec, stdout);
+        try help_cmd.printCommand(allocator, spec, stdout);
         return 0;
     }
 
     return switch (spec.kind) {
-        .help => help_cmd.run(args[1..], stdout, stderr),
+        .help => help_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .version => version_cmd.run(args[1..], stdout, stderr),
         .list => list_cmd.run(allocator, args[1..], stdout, stderr),
         .config => config_cmd.run(args[1..], &loaded_config.resolved, stdout, stderr),
@@ -82,15 +93,23 @@ fn isHelpFlag(arg: []const u8) bool {
 
 const ParsedRootArgs = struct {
     cli_config_path: ?[]const u8,
+    output_format: output.Format,
     positional: []const []const u8,
     root_help: bool,
+
+    pub fn deinit(self: *ParsedRootArgs, allocator: std.mem.Allocator) void {
+        allocator.free(self.positional);
+    }
 };
 
-fn parseRootArgs(args: []const []const u8) !ParsedRootArgs {
-    var index: usize = 0;
+fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !ParsedRootArgs {
     var cli_config_path: ?[]const u8 = null;
+    var output_format: output.Format = .text;
     var root_help = false;
+    var positional: std.ArrayList([]const u8) = .empty;
+    errdefer positional.deinit(allocator);
 
+    var index: usize = 0;
     while (index < args.len) : (index += 1) {
         const arg = args[index];
 
@@ -111,19 +130,40 @@ fn parseRootArgs(args: []const []const u8) !ParsedRootArgs {
             continue;
         }
 
-        break;
+        if (std.mem.eql(u8, arg, "--format")) {
+            index += 1;
+            if (index >= args.len) return error.MissingFormatValue;
+            output_format = output.parseFormat(args[index]) catch return error.UnsupportedFormatValue;
+            continue;
+        }
+
+        if (std.mem.startsWith(u8, arg, "--format=")) {
+            output_format = output.parseFormat(arg["--format=".len..]) catch return error.UnsupportedFormatValue;
+            continue;
+        }
+
+        try positional.append(allocator, arg);
     }
 
     return .{
         .cli_config_path = cli_config_path,
-        .positional = args[index..],
+        .output_format = output_format,
+        .positional = try positional.toOwnedSlice(allocator),
         .root_help = root_help,
     };
 }
 
 test "parseRootArgs handles config flag and command" {
-    const parsed = try parseRootArgs(&.{ "--config", "/tmp/wt.toml", "config", "show" });
+    var parsed = try parseRootArgs(std.testing.allocator, &.{ "--config", "/tmp/wt.toml", "config", "show" });
+    defer parsed.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("/tmp/wt.toml", parsed.cli_config_path.?);
     try std.testing.expectEqual(@as(usize, 2), parsed.positional.len);
     try std.testing.expectEqualStrings("config", parsed.positional[0]);
+}
+
+test "parseRootArgs handles format anywhere" {
+    var parsed = try parseRootArgs(std.testing.allocator, &.{ "help", "--format", "json" });
+    defer parsed.deinit(std.testing.allocator);
+    try std.testing.expectEqual(output.Format.json, parsed.output_format);
+    try std.testing.expectEqualStrings("help", parsed.positional[0]);
 }

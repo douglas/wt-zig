@@ -1,5 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
+const output = @import("../output.zig");
 
 const marker_start = "# >>> wt initialize >>>";
 const marker_end = "# <<< wt initialize <<<";
@@ -38,8 +39,7 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     const parsed = parseArgs(args) catch {
-        try stderr.writeAll("Usage: wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt init", "Usage: wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]");
     };
 
     var env_map = try std.process.getEnvMap(allocator);
@@ -47,20 +47,20 @@ pub fn run(
 
     const shell = detectShell(parsed.shell, &env_map) catch |err| switch (err) {
         error.UnsupportedShell => {
-            try stderr.writeAll("could not detect shell. Please specify: wt init bash|zsh|powershell\n");
+            try writeCommandError(stdout, stderr, "could not detect shell. Please specify: wt init bash|zsh|powershell");
             return 1;
         },
         else => return err,
     };
 
     if (shell == .powershell and builtin.os.tag != .windows) {
-        try stderr.writeAll("PowerShell shell integration is only supported on Windows. On macOS/Linux, use: wt init bash or wt init zsh\n");
+        try writeCommandError(stdout, stderr, "PowerShell shell integration is only supported on Windows. On macOS/Linux, use: wt init bash or wt init zsh");
         return 1;
     }
 
     const config_path = shellConfigPath(allocator, shell, &env_map) catch |err| switch (err) {
         error.MissingHomeDirectory => {
-            try stderr.writeAll("could not determine shell config path: missing HOME\n");
+            try writeCommandError(stdout, stderr, "could not determine shell config path: missing HOME");
             return 1;
         },
         else => return err,
@@ -69,7 +69,15 @@ pub fn run(
 
     if (parsed.uninstall) {
         const result = try removeShellConfig(allocator, config_path, parsed.dry_run);
-        switch (result) {
+        if (output.isJson()) {
+            try output.emitSuccess(allocator, stdout, "wt init", .{
+                .status = if (parsed.dry_run) "planned" else "removed",
+                .operation = "uninstall",
+                .shell = shellName(shell),
+                .config_path = config_path,
+                .dry_run = parsed.dry_run,
+            });
+        } else switch (result) {
             .removed => try stdout.print("Removed wt configuration from {s}\n", .{config_path}),
             .planned_remove => try stdout.print("Would remove wt configuration from {s}\n", .{config_path}),
             .not_found => try stdout.print("No wt configuration found in {s}\n", .{config_path}),
@@ -78,10 +86,16 @@ pub fn run(
     }
 
     const result = try installShellConfig(allocator, config_path, shell, parsed.dry_run);
-    switch (result) {
-        .already_present => {
-            try stdout.print("wt shell integration already installed in {s}\n", .{config_path});
-        },
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt init", .{
+            .status = if (parsed.dry_run) "planned" else "installed",
+            .operation = "install",
+            .shell = shellName(shell),
+            .config_path = config_path,
+            .dry_run = parsed.dry_run,
+        });
+    } else switch (result) {
+        .already_present => try stdout.print("wt shell integration already installed in {s}\n", .{config_path}),
         .installed => {
             try stdout.print("Installed wt shell integration in {s}\n", .{config_path});
             if (!parsed.no_prompt) try printActivationGuidance(shell, config_path, stdout);
@@ -312,6 +326,22 @@ fn printActivationGuidance(shell: Shell, config_path: []const u8, stdout: anytyp
         .powershell => try stdout.writeAll("  . $PROFILE\n"),
     }
     try stdout.writeAll("\nOr start a new shell session.\n");
+}
+
+fn shellName(shell: Shell) []const u8 {
+    return switch (shell) {
+        .bash => "bash",
+        .zsh => "zsh",
+        .powershell => "powershell",
+    };
+}
+
+fn writeCommandError(stdout: anytype, stderr: anytype, message: []const u8) !void {
+    if (output.isJson()) {
+        try output.emitError(stdout, "wt init", message);
+    } else {
+        try stderr.print("{s}\n", .{message});
+    }
 }
 
 fn fileExists(path: []const u8) bool {

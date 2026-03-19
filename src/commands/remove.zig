@@ -1,13 +1,20 @@
 const std = @import("std");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
+const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
+const prompt = @import("../prompt.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub const Outcome = struct {
     path: []const u8,
     navigate_to: ?[]const u8,
+};
+
+const ParsedArgs = struct {
+    branch: ?[]const u8 = null,
+    force: bool = false,
 };
 
 pub fn run(
@@ -17,22 +24,71 @@ pub fn run(
     stdout: anytype,
     stderr: anytype,
 ) !u8 {
-    if (args.len != 1) {
-        try stderr.writeAll("Usage: wt remove <branch>\n");
-        return 1;
+    const parsed = parseArgs(args) catch {
+        return output.usageError(stdout, stderr, "wt remove", "Usage: wt remove [branch] [--force|-f]");
+    };
+
+    var branch = parsed.branch;
+    var owned_branches: ?[][]u8 = null;
+    defer if (owned_branches) |branches| {
+        for (branches) |candidate| allocator.free(candidate);
+        allocator.free(branches);
+    };
+
+    if (branch == null) {
+        if (output.isJson()) {
+            try output.emitError(stdout, "wt remove", "wt remove with --format json requires an explicit branch argument");
+            return 1;
+        }
+
+        const branches = git_repo.getExistingWorktreeBranches(allocator) catch {
+            try stderr.writeAll("failed to get worktrees\n");
+            return 1;
+        };
+        owned_branches = branches;
+        if (branches.len == 0) {
+            try stderr.writeAll("no worktrees to remove\n");
+            return 1;
+        }
+
+        const selection = prompt.selectItem(allocator, "Select worktree to remove", branches, stderr) catch |err| switch (err) {
+            error.SelectionCancelled => {
+                try stderr.writeAll("selection cancelled\n");
+                return 1;
+            },
+            else => {
+                try stderr.writeAll("invalid selection\n");
+                return 1;
+            },
+        };
+        branch = selection.value;
     }
 
-    const outcome = removeWorktree(allocator, cfg, args[0], stderr) catch |err| switch (err) {
+    const outcome = removeWorktree(allocator, cfg, branch.?, parsed.force, stderr) catch |err| switch (err) {
         error.NoSuchWorktree => {
-            try stderr.print("no worktree found for branch: {s}\n", .{args[0]});
+            if (output.isJson()) {
+                const message = try std.fmt.allocPrint(allocator, "no worktree found for branch: {s}", .{branch.?});
+                defer allocator.free(message);
+                try output.emitError(stdout, "wt remove", message);
+            } else {
+                try stderr.print("no worktree found for branch: {s}\n", .{branch.?});
+            }
             return 1;
         },
         error.CannotRemoveMainWorktree => {
-            try stderr.writeAll("cannot remove the main worktree\n");
+            if (output.isJson()) {
+                try output.emitError(stdout, "wt remove", "cannot remove the main worktree");
+            } else {
+                try stderr.writeAll("cannot remove the main worktree\n");
+            }
             return 1;
         },
         error.HookCommandFailed => {
-            try stderr.writeAll("pre-remove hook failed\n");
+            if (output.isJson()) {
+                try output.emitError(stdout, "wt remove", "pre-remove hook failed");
+            } else {
+                try stderr.writeAll("pre-remove hook failed\n");
+            }
             return 1;
         },
         error.GitCommandFailed => return 1,
@@ -41,9 +97,18 @@ pub fn run(
     defer allocator.free(outcome.path);
     defer if (outcome.navigate_to) |navigate_to| allocator.free(navigate_to);
 
-    try stdout.print("Removed worktree: {s}\n", .{outcome.path});
-    if (outcome.navigate_to) |navigate_to| {
-        try stdout.print("wt navigating to: {s}\n", .{navigate_to});
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt remove", .{
+            .status = "removed",
+            .branch = branch.?,
+            .path = outcome.path,
+            .navigate_to = outcome.navigate_to,
+        });
+    } else {
+        try stdout.print("Removed worktree: {s}\n", .{outcome.path});
+        if (outcome.navigate_to) |navigate_to| {
+            try stdout.print("wt navigating to: {s}\n", .{navigate_to});
+        }
     }
     return 0;
 }
@@ -52,6 +117,7 @@ pub fn removeWorktree(
     allocator: std.mem.Allocator,
     cfg: *const config.Resolved,
     branch: []const u8,
+    force: bool,
     stderr: anytype,
 ) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
@@ -74,7 +140,7 @@ pub fn removeWorktree(
     const navigate_to = try navigationTarget(allocator, existing_path, info.main);
     errdefer if (navigate_to) |path| allocator.free(path);
 
-    const success = try runGitRemove(allocator, existing_path, stderr);
+    const success = try runGitRemove(allocator, existing_path, force, stderr);
     if (!success) return error.GitCommandFailed;
 
     path_mod.cleanupWorktreePath(cfg, existing_path) catch |err| {
@@ -122,10 +188,18 @@ fn isSameOrChildPath(parent: []const u8, child: []const u8) bool {
     return parent[parent.len - 1] == std.fs.path.sep or child[parent.len] == std.fs.path.sep;
 }
 
-fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, stderr: anytype) !bool {
+fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, force: bool, stderr: anytype) !bool {
+    var args = std.ArrayList([]const u8).empty;
+    defer args.deinit(allocator);
+    try args.appendSlice(allocator, &.{ "git", "worktree", "remove" });
+    if (force) try args.append(allocator, "--force");
+    try args.append(allocator, path);
+    const argv = try args.toOwnedSlice(allocator);
+    defer allocator.free(argv);
+
     const result = try std.process.Child.run(.{
         .allocator = allocator,
-        .argv = &.{ "git", "worktree", "remove", path },
+        .argv = argv,
     });
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
@@ -142,8 +216,32 @@ fn freeRepoInfo(allocator: std.mem.Allocator, info: *path_mod.RepoInfo) void {
     allocator.free(info.name);
 }
 
+fn parseArgs(args: []const []const u8) !ParsedArgs {
+    var parsed = ParsedArgs{};
+
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--force") or std.mem.eql(u8, arg, "-f")) {
+            parsed.force = true;
+            continue;
+        }
+        if (parsed.branch == null) {
+            parsed.branch = arg;
+            continue;
+        }
+        return error.InvalidArguments;
+    }
+
+    return parsed;
+}
+
 test "isSameOrChildPath matches boundaries" {
     try std.testing.expect(isSameOrChildPath("/tmp/repo", "/tmp/repo"));
     try std.testing.expect(isSameOrChildPath("/tmp/repo", "/tmp/repo/sub"));
     try std.testing.expect(!isSameOrChildPath("/tmp/repo", "/tmp/repository"));
+}
+
+test "parseArgs accepts optional force" {
+    const parsed = try parseArgs(&.{ "--force", "feature" });
+    try std.testing.expect(parsed.force);
+    try std.testing.expectEqualStrings("feature", parsed.branch.?);
 }

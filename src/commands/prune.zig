@@ -1,4 +1,5 @@
 const std = @import("std");
+const output = @import("../output.zig");
 
 pub fn run(
     allocator: std.mem.Allocator,
@@ -7,8 +8,7 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     if (args.len != 0) {
-        try stderr.writeAll("Usage: wt prune\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt prune", "Usage: wt prune");
     }
 
     const result = try std.process.Child.run(.{
@@ -19,7 +19,11 @@ pub fn run(
     defer allocator.free(result.stderr);
 
     if (result.term == .Exited and result.term.Exited == 0) {
-        try stdout.writeAll("Pruned stale worktree administrative files.\n");
+        if (output.isJson()) {
+            try output.emitSuccess(allocator, stdout, "wt prune", .{ .status = "pruned" });
+        } else {
+            try stdout.writeAll("Pruned stale worktree administrative files.\n");
+        }
         return 0;
     }
 

@@ -1,59 +1,100 @@
 const std = @import("std");
 const command = @import("../command.zig");
+const config = @import("../config.zig");
+const output = @import("../output.zig");
+const path = @import("../path.zig");
 
-pub fn run(args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    args: []const []const u8,
+    stdout: anytype,
+    stderr: anytype,
+) !u8 {
     if (args.len == 0) {
-        try printRoot(stdout);
+        try printRoot(allocator, cfg, stdout);
         return 0;
     }
 
     if (args.len > 1) {
-        try stderr.writeAll("Usage: wt help [command]\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt help", "Usage: wt help [command]");
     }
 
     const spec = command.find(args[0]) orelse {
-        try stderr.print("Unknown command: {s}\n", .{args[0]});
+        if (output.isJson()) {
+            const message = try std.fmt.allocPrint(allocator, "Unknown command: {s}", .{args[0]});
+            defer allocator.free(message);
+            try output.emitError(stdout, "wt help", message);
+        } else {
+            try stderr.print("Unknown command: {s}\n", .{args[0]});
+        }
         return 1;
     };
 
-    try printCommand(spec, stdout);
+    try printCommand(allocator, spec, stdout);
     return 0;
 }
 
-pub fn printRoot(writer: anytype) !void {
-    try writer.writeAll(
-        \\wt manages Git worktrees with a small Zig-native CLI.
+pub fn printRoot(allocator: std.mem.Allocator, cfg: *const config.Resolved, writer: anytype) !void {
+    var buffer = std.ArrayList(u8).empty;
+    defer buffer.deinit(allocator);
+    var buffered = buffer.writer(allocator);
+    const pattern = blk: {
+        const resolved = path.resolvePattern(cfg) catch break :blk cfg.pattern;
+        break :blk resolved.pattern;
+    };
+
+    try buffered.print(
+        \\Git-like worktree management with organized directory structure.
+        \\
+        \\Strategy: {s}
+        \\Pattern:  {s}
+        \\Root:     {s}
+        \\
+        \\Run 'wt info' to see available strategies and pattern variables.
+        \\Set WORKTREE_ROOT, WORKTREE_STRATEGY, and WORKTREE_PATTERN to customize.
         \\
         \\Usage:
-        \\  wt <command> [options]
+        \\  wt [flags]
+        \\  wt [command]
         \\
-        \\Commands:
+        \\Available Commands:
+        \\  checkout    Checkout existing branch in new worktree
+        \\  cleanup     Remove worktrees for merged branches
+        \\  completion  Generate the autocompletion script for the specified shell
+        \\  config      Manage wt configuration
+        \\  create      Create new branch in worktree (default: main/master)
+        \\  examples    Show detailed command examples and outcomes
+        \\  help        Help about any command
+        \\  info        Show worktree location configuration
+        \\  init        Initialize shell integration
+        \\  list        List all worktrees
+        \\  migrate     Migrate existing worktrees to configured paths
+        \\  mr          Checkout GitLab MR in worktree (uses glab CLI)
+        \\  pr          Checkout GitHub PR in worktree (uses gh CLI)
+        \\  prune       Remove worktree administrative files
+        \\  remove      Remove a worktree
+        \\  shellenv    Output shell function for auto-cd (source this)
+        \\  version     Show version information
         \\
-    );
+        \\Flags:
+        \\      --config string   Path to config file (default: ~/.config/wt/config.toml)
+        \\      --format string   Output format: text or json (default "text")
+        \\  -h, --help            help for wt
+        \\
+        \\Use "wt [command] --help" for more information about a command.
+        \\
+    , .{ cfg.strategy, pattern, cfg.root });
 
-    for (command.all) |spec| {
-        try writer.print("  {s}\n      {s}\n", .{ spec.display, spec.summary });
-    }
-
-    try writer.writeAll(
-        \\
-        \\Options:
-        \\  -h, --help
-        \\      Show help for wt or a specific command
-        \\  --config <path>
-        \\      Load configuration from a specific TOML file
-        \\
-        \\Current phases include config loading, path resolution, checkout/create,
-        \\hooks, remove/prune/cleanup/migrate, PR/MR checkout, examples, shellenv, and init support.
-        \\
-        \\Run `wt help <command>` for command-specific usage.
-        \\
-    );
+    try output.commandHelp(allocator, writer, "wt", buffer.items);
 }
 
-pub fn printCommand(spec: *const command.Spec, writer: anytype) !void {
-    try writer.print(
+pub fn printCommand(allocator: std.mem.Allocator, spec: *const command.Spec, writer: anytype) !void {
+    var buffer = std.ArrayList(u8).empty;
+    defer buffer.deinit(allocator);
+    var buffered = buffer.writer(allocator);
+
+    try buffered.print(
         \\{s}
         \\
         \\Usage:
@@ -67,10 +108,14 @@ pub fn printCommand(spec: *const command.Spec, writer: anytype) !void {
     );
 
     if (spec.aliases.len > 0) {
-        try writer.writeAll("Aliases:\n");
+        try buffered.writeAll("Aliases:\n");
         for (spec.aliases) |alias| {
-            try writer.print("  {s}\n", .{alias});
+            try buffered.print("  {s}\n", .{alias});
         }
-        try writer.writeByte('\n');
+        try buffered.writeByte('\n');
     }
+
+    const command_name = try std.fmt.allocPrint(allocator, "wt {s}", .{spec.name});
+    defer allocator.free(command_name);
+    try output.commandHelp(allocator, writer, command_name, buffer.items);
 }

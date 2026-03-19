@@ -1,4 +1,5 @@
 const std = @import("std");
+const output = @import("../output.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub fn run(
@@ -8,12 +9,16 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     if (args.len != 0) {
-        try stderr.writeAll("Usage: wt list\n");
-        return 1;
+        return output.usageError(stdout, stderr, "wt list", "Usage: wt list");
     }
 
     var result = worktree.list(allocator, stderr) catch return 1;
     defer result.deinit(allocator);
+
+    if (output.isJson()) {
+        try output.emitSuccess(allocator, stdout, "wt list", .{ .worktrees = result.entries });
+        return 0;
+    }
 
     if (result.entries.len == 0) {
         try stdout.writeAll("No worktrees found.\n");
