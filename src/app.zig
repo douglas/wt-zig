@@ -5,6 +5,7 @@ const cleanup_cmd = @import("commands/cleanup.zig");
 const config_cmd = @import("commands/config.zig");
 const checkout_cmd = @import("commands/checkout.zig");
 const create_cmd = @import("commands/create.zig");
+const examples_cmd = @import("commands/examples.zig");
 const help_cmd = @import("commands/help.zig");
 const info_cmd = @import("commands/info.zig");
 const init_cmd = @import("commands/init.zig");
@@ -69,6 +70,7 @@ pub fn run(
         .migrate => migrate_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .pr => pr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .mr => mr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
+        .examples => examples_cmd.run(args[1..], stdout, stderr),
         .shellenv => shellenv_cmd.run(args[1..], stdout, stderr),
         .init => init_cmd.run(allocator, args[1..], stdout, stderr),
     };

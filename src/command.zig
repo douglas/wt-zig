@@ -14,6 +14,7 @@ pub const Kind = enum {
     migrate,
     pr,
     mr,
+    examples,
     shellenv,
     init,
 };
@@ -145,6 +146,15 @@ pub const all = [_]Spec{
         .summary = "Checkout a GitLab merge request in a worktree",
         .usage = "wt mr <number|url>",
         .details = "Resolve a GitLab MR to its source branch with `glab` and reuse the checkout flow.",
+    },
+    .{
+        .kind = .examples,
+        .name = "examples",
+        .aliases = &.{},
+        .display = "examples",
+        .summary = "Show detailed command examples and outcomes",
+        .usage = "wt examples",
+        .details = "Print the full examples catalog for the current wt-zig feature set, including reference JSON snippets copied from the Go CLI for still-unported output modes.",
     },
     .{
         .kind = .shellenv,

@@ -16,6 +16,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `migrate`
 - `pr`
 - `mr`
+- `examples`
 - `info`
 - `shellenv`
 - `init`
@@ -149,6 +150,12 @@ Commit: `da36846`
 - Emitted PowerShell install blocks with `Invoke-Expression (& wt shellenv)`.
 - Upgraded `wt shellenv` to emit PowerShell auto-navigation and completion output on Windows.
 
+### Phase 14: examples catalog
+
+- Added `wt examples`.
+- Ported a text-mode examples catalog covering the currently ported command set.
+- Included reference JSON snippets from the Go CLI as forward-looking documentation for the still-unported global JSON mode.
+
 ## Verification Patterns
 
 The port has been verified repeatedly with both unit/build checks and temp-repo smoke tests.
@@ -191,7 +198,6 @@ The major unported areas from the Go CLI are now smaller and more isolated:
 - interactive flows:
   - branch/worktree selection for `checkout`, `remove`, `pr`, `mr`
   - confirmations where the Go CLI prompts
-- examples command
 - global JSON output mode
 - any remaining shell-install polish beyond the minimal Unix slice
 
