@@ -9,9 +9,10 @@ The current slices keep the scope intentionally small:
 - bootstrap a Zig 0.15.2 project
 - provide a native command dispatcher
 - add config loading with defaults, `WT_CONFIG`, `--config`, and env overrides
+- resolve effective worktree patterns from strategy aliases and custom templates
 - implement `help`, `version`, and `list`
 - make `list` use `git worktree list --porcelain`
-- expose `wt config show` and `wt config path`
+- expose `wt config show` and `wt config path`, including effective pattern display
 - leave clean seams for later path, hook, and PR/MR modules
 
 ## Commands

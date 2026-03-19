@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const path = @import("../path.zig");
 
 pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
     if (args.len == 0) {
@@ -48,7 +49,9 @@ pub fn printHelp(writer: anytype) !void {
 
 pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
     const config_status = if (cfg.config_file_found) "found" else "not found";
-    const pattern = if (cfg.pattern.len == 0) "(none)" else cfg.pattern;
+    const pattern_info = path.resolvePattern(cfg) catch null;
+    const pattern = if (pattern_info) |info| info.pattern else "(none)";
+    const pattern_source = if (pattern_info) |info| info.source else cfg.sources.pattern;
 
     try writer.print(
         \\Config file: {s} ({s})
@@ -68,7 +71,7 @@ pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
             cfg.strategy,
             cfg.sources.strategy,
             pattern,
-            cfg.sources.pattern,
+            pattern_source,
             cfg.separator,
             cfg.sources.separator,
         },
