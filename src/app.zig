@@ -7,6 +7,7 @@ const checkout_cmd = @import("commands/checkout.zig");
 const create_cmd = @import("commands/create.zig");
 const help_cmd = @import("commands/help.zig");
 const info_cmd = @import("commands/info.zig");
+const init_cmd = @import("commands/init.zig");
 const list_cmd = @import("commands/list.zig");
 const mr_cmd = @import("commands/mr.zig");
 const pr_cmd = @import("commands/pr.zig");
@@ -67,6 +68,7 @@ pub fn run(
         .pr => pr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .mr => mr_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .shellenv => shellenv_cmd.run(args[1..], stdout, stderr),
+        .init => init_cmd.run(allocator, args[1..], stdout, stderr),
     };
 }
 

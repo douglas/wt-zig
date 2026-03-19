@@ -14,6 +14,7 @@ pub const Kind = enum {
     pr,
     mr,
     shellenv,
+    init,
 };
 
 pub const Spec = struct {
@@ -143,6 +144,15 @@ pub const all = [_]Spec{
         .summary = "Print shell integration for automatic directory navigation",
         .usage = "wt shellenv",
         .details = "Emit a bash/zsh wrapper function that follows `wt navigating to:` markers after successful commands.",
+    },
+    .{
+        .kind = .init,
+        .name = "init",
+        .aliases = &.{},
+        .display = "init",
+        .summary = "Install wt shell integration into your shell rc file",
+        .usage = "wt init [bash|zsh]",
+        .details = "Append an idempotent `wt shellenv` block to the detected bash or zsh config file.",
     },
 };
 
