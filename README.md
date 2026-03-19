@@ -2,6 +2,8 @@
 
 `wt-zig` is a Zig-native port of [`/home/douglas/src/wt`](/home/douglas/src/wt), built incrementally instead of as a line-by-line Cobra rewrite.
 
+The detailed phase history, verification patterns, and remaining gaps live in [docs/port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
+
 ## Current Scope
 
 The current slices keep the scope intentionally small:
