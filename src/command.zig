@@ -153,7 +153,7 @@ pub const all = [_]Spec{
         .display = "shellenv",
         .summary = "Print shell integration for automatic directory navigation",
         .usage = "wt shellenv",
-        .details = "Emit a bash/zsh wrapper function that follows `wt navigating to:` markers, skips auto-cd in JSON mode, and registers shell completions.",
+        .details = "Emit OS-appropriate shell integration that follows `wt navigating to:` markers, skips auto-cd in JSON mode, and registers shell completions.",
     },
     .{
         .kind = .init,
@@ -161,8 +161,8 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "init",
         .summary = "Install wt shell integration into your shell rc file",
-        .usage = "wt init [bash|zsh] [--dry-run] [--uninstall] [--no-prompt]",
-        .details = "Append, update, preview, or remove an idempotent `wt shellenv` block in the detected bash or zsh config file.",
+        .usage = "wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]",
+        .details = "Append, update, preview, or remove an idempotent `wt shellenv` block in the detected bash, zsh, or PowerShell config file.",
     },
 };
 

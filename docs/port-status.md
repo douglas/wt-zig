@@ -139,7 +139,15 @@ Commit: `240121a`
 - Expanded `wt init` with `--dry-run`, `--uninstall`, and `--no-prompt`.
 - Made `init` update existing marked blocks instead of only appending once.
 - Upgraded `wt shellenv` to include the JSON auto-cd guard plus bash/zsh completions.
-- Kept this slice Unix-only; PowerShell support remains a later phase.
+
+Commit: `da36846`
+
+### Phase 13: PowerShell shell integration
+
+- Added `wt init [powershell|pwsh]`.
+- Resolved the PowerShell profile path from `$PROFILE` first, then the standard profile fallback.
+- Emitted PowerShell install blocks with `Invoke-Expression (& wt shellenv)`.
+- Upgraded `wt shellenv` to emit PowerShell auto-navigation and completion output on Windows.
 
 ## Verification Patterns
 
@@ -180,10 +188,6 @@ Useful smoke-test patterns that already proved valuable:
 
 The major unported areas from the Go CLI are now smaller and more isolated:
 
-- richer `init` support:
-  - PowerShell support
-- richer `shellenv` output:
-  - PowerShell shellenv
 - interactive flows:
   - branch/worktree selection for `checkout`, `remove`, `pr`, `mr`
   - confirmations where the Go CLI prompts

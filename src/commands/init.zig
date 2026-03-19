@@ -7,6 +7,7 @@ const marker_end = "# <<< wt initialize <<<";
 pub const Shell = enum {
     bash,
     zsh,
+    powershell,
 };
 
 const ParsedArgs = struct {
@@ -37,7 +38,7 @@ pub fn run(
     stderr: anytype,
 ) !u8 {
     const parsed = parseArgs(args) catch {
-        try stderr.writeAll("Usage: wt init [bash|zsh] [--dry-run] [--uninstall] [--no-prompt]\n");
+        try stderr.writeAll("Usage: wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]\n");
         return 1;
     };
 
@@ -46,11 +47,16 @@ pub fn run(
 
     const shell = detectShell(parsed.shell, &env_map) catch |err| switch (err) {
         error.UnsupportedShell => {
-            try stderr.writeAll("could not detect shell. Please specify: wt init bash|zsh\n");
+            try stderr.writeAll("could not detect shell. Please specify: wt init bash|zsh|powershell\n");
             return 1;
         },
         else => return err,
     };
+
+    if (shell == .powershell and builtin.os.tag != .windows) {
+        try stderr.writeAll("PowerShell shell integration is only supported on Windows. On macOS/Linux, use: wt init bash or wt init zsh\n");
+        return 1;
+    }
 
     const config_path = shellConfigPath(allocator, shell, &env_map) catch |err| switch (err) {
         error.MissingHomeDirectory => {
@@ -137,6 +143,8 @@ fn detectShell(explicit_shell: ?Shell, env_map: *const std.process.EnvMap) !Shel
 fn parseShell(value: []const u8) ?Shell {
     if (std.ascii.eqlIgnoreCase(value, "bash")) return .bash;
     if (std.ascii.eqlIgnoreCase(value, "zsh")) return .zsh;
+    if (std.ascii.eqlIgnoreCase(value, "powershell")) return .powershell;
+    if (std.ascii.eqlIgnoreCase(value, "pwsh")) return .powershell;
     return null;
 }
 
@@ -150,6 +158,7 @@ fn shellConfigPath(
     return switch (shell) {
         .bash => bashConfigPath(allocator, home),
         .zsh => zshConfigPath(allocator, home, env_map),
+        .powershell => powerShellConfigPath(allocator, home, env_map),
     };
 }
 
@@ -183,6 +192,23 @@ fn zshConfigPath(
     }
 
     return std.fs.path.join(allocator, &.{ home, ".zshrc" });
+}
+
+fn powerShellConfigPath(
+    allocator: std.mem.Allocator,
+    home: []const u8,
+    env_map: *const std.process.EnvMap,
+) ![]u8 {
+    if (env_map.get("PROFILE")) |profile| {
+        const trimmed = std.mem.trim(u8, profile, " \t\r\n");
+        if (trimmed.len != 0) return allocator.dupe(u8, trimmed);
+    }
+
+    if (builtin.os.tag == .windows) {
+        return std.fs.path.join(allocator, &.{ home, "Documents", "WindowsPowerShell", "Microsoft.PowerShell_profile.ps1" });
+    }
+
+    return std.fs.path.join(allocator, &.{ home, ".config", "powershell", "Microsoft.PowerShell_profile.ps1" });
 }
 
 fn installShellConfig(
@@ -254,12 +280,18 @@ fn removeShellConfig(
 }
 
 fn shellConfigContent(shell: Shell) []const u8 {
-    _ = shell;
-    return 
-    \\# >>> wt initialize >>>
-    \\eval "$(wt shellenv)"
-    \\# <<< wt initialize <<<
-    ;
+    return switch (shell) {
+        .bash, .zsh =>
+        \\# >>> wt initialize >>>
+        \\eval "$(wt shellenv)"
+        \\# <<< wt initialize <<<
+        ,
+        .powershell =>
+        \\# >>> wt initialize >>>
+        \\Invoke-Expression (& wt shellenv)
+        \\# <<< wt initialize <<<
+        ,
+    };
 }
 
 fn mergeContents(allocator: std.mem.Allocator, existing: []const u8, block: []const u8) ![]u8 {
@@ -277,6 +309,7 @@ fn printActivationGuidance(shell: Shell, config_path: []const u8, stdout: anytyp
     try stdout.writeAll("\nTo activate, run:\n");
     switch (shell) {
         .bash, .zsh => try stdout.print("  source {s}\n", .{config_path}),
+        .powershell => try stdout.writeAll("  . $PROFILE\n"),
     }
     try stdout.writeAll("\nOr start a new shell session.\n");
 }
@@ -333,6 +366,11 @@ test "parseArgs accepts shell and flags in any order" {
     try std.testing.expectError(error.InvalidArguments, parseArgs(&.{ "bash", "zsh" }));
 }
 
+test "parseShell accepts powershell aliases" {
+    try std.testing.expectEqual(Shell.powershell, parseShell("powershell").?);
+    try std.testing.expectEqual(Shell.powershell, parseShell("pwsh").?);
+}
+
 test "detectShell prefers explicit argument" {
     var env = std.process.EnvMap.init(std.testing.allocator);
     defer env.deinit();
@@ -351,6 +389,24 @@ test "shellConfigPath respects ZDOTDIR" {
     defer std.testing.allocator.free(path);
 
     try std.testing.expectEqualStrings("/home/tester/custom-zsh/.zshrc", path);
+}
+
+test "shellConfigPath prefers PROFILE for powershell" {
+    var env = std.process.EnvMap.init(std.testing.allocator);
+    defer env.deinit();
+    try env.put("HOME", "/home/tester");
+    try env.put("PROFILE", "/tmp/profile.ps1");
+
+    const path = try shellConfigPath(std.testing.allocator, .powershell, &env);
+    defer std.testing.allocator.free(path);
+
+    try std.testing.expectEqualStrings("/tmp/profile.ps1", path);
+}
+
+test "shellConfigContent uses powershell invocation" {
+    const content = shellConfigContent(.powershell);
+    try std.testing.expect(std.mem.indexOf(u8, content, "Invoke-Expression (& wt shellenv)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, content, "eval \"$(wt shellenv)\"") == null);
 }
 
 test "installShellConfig appends block once" {
@@ -444,4 +500,23 @@ test "run with no prompt suppresses activation guidance" {
     try std.testing.expectEqual(@as(u8, 0), exit_code);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Would append to ") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "To activate, run:") == null);
+}
+
+test "run rejects powershell on non-windows after parsing flags" {
+    if (builtin.os.tag == .windows) return;
+
+    const allocator = std.testing.allocator;
+
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+
+    var stdout = stdout_buffer.writer(allocator);
+    var stderr = stderr_buffer.writer(allocator);
+
+    const exit_code = try run(allocator, &.{ "powershell", "--dry-run" }, &stdout, &stderr);
+    try std.testing.expectEqual(@as(u8, 1), exit_code);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "PowerShell shell integration is only supported on Windows") != null);
 }
