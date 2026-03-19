@@ -1,0 +1,76 @@
+const std = @import("std");
+const config = @import("../config.zig");
+
+pub fn run(args: []const []const u8, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
+    if (args.len == 0) {
+        try printHelp(stdout);
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "show")) {
+        if (args.len != 1) {
+            try stderr.writeAll("Usage: wt config show\n");
+            return 1;
+        }
+        try printShow(cfg, stdout);
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "path")) {
+        if (args.len != 1) {
+            try stderr.writeAll("Usage: wt config path\n");
+            return 1;
+        }
+        try stdout.print("{s}\n", .{cfg.config_file_path});
+        return 0;
+    }
+
+    try stderr.print("Unknown config command: {s}\n\n", .{args[0]});
+    try printHelp(stderr);
+    return 1;
+}
+
+pub fn printHelp(writer: anytype) !void {
+    try writer.writeAll(
+        \\Manage wt configuration.
+        \\
+        \\Usage:
+        \\  wt config <command>
+        \\
+        \\Commands:
+        \\  show
+        \\      Print the effective configuration and its sources
+        \\  path
+        \\      Print the resolved config file path
+        \\
+    );
+}
+
+pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
+    const config_status = if (cfg.config_file_found) "found" else "not found";
+    const pattern = if (cfg.pattern.len == 0) "(none)" else cfg.pattern;
+
+    try writer.print(
+        \\Config file: {s} ({s})
+        \\
+        \\Effective configuration:
+        \\  root = {s} ({s})
+        \\  strategy = {s} ({s})
+        \\  pattern = {s} ({s})
+        \\  separator = "{s}" ({s})
+        \\
+    ,
+        .{
+            cfg.config_file_path,
+            config_status,
+            cfg.root,
+            cfg.sources.root,
+            cfg.strategy,
+            cfg.sources.strategy,
+            pattern,
+            cfg.sources.pattern,
+            cfg.separator,
+            cfg.sources.separator,
+        },
+    );
+}

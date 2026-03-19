@@ -41,9 +41,11 @@ pub fn printRoot(writer: anytype) !void {
         \\Options:
         \\  -h, --help
         \\      Show help for wt or a specific command
+        \\  --config <path>
+        \\      Load configuration from a specific TOML file
         \\
-        \\Phase 1 intentionally includes only help, version, and list.
-        \\Later phases will add config, paths, hooks, and PR/MR support.
+        \\Current phases include config loading plus help, version, and list.
+        \\Later phases will add path strategies, checkout/create, hooks, and PR/MR support.
         \\
         \\Run `wt help <command>` for command-specific usage.
         \\

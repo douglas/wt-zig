@@ -4,6 +4,7 @@ pub const Kind = enum {
     help,
     version,
     list,
+    config,
 };
 
 pub const Spec = struct {
@@ -43,6 +44,15 @@ pub const all = [_]Spec{
         .summary = "List worktrees using `git worktree list --porcelain`",
         .usage = "wt list",
         .details = "Read Git's porcelain worktree output, parse it, and render a small text summary.",
+    },
+    .{
+        .kind = .config,
+        .name = "config",
+        .aliases = &.{},
+        .display = "config",
+        .summary = "Inspect resolved configuration values",
+        .usage = "wt config <show|path>",
+        .details = "Inspect the active config file path and effective configuration sources.",
     },
 };
 

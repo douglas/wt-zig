@@ -21,5 +21,7 @@ pub fn main() !void {
 test {
     std.testing.refAllDecls(@import("app.zig"));
     std.testing.refAllDecls(@import("command.zig"));
+    std.testing.refAllDecls(@import("config.zig"));
+    std.testing.refAllDecls(@import("commands/config.zig"));
     std.testing.refAllDecls(@import("git/worktree.zig"));
 }
