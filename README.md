@@ -5,6 +5,7 @@
 The detailed phase history, verification patterns, and completion criteria live in [docs/port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
 For a practical comparison of the Go and Zig implementations, see [docs/comparison.md](/home/douglas/src/wt-zig/docs/comparison.md).
 For the maintainer-facing architecture and code-quality rules, see [docs/architecture.md](/home/douglas/src/wt-zig/docs/architecture.md).
+For a maintainer onboarding guide aimed at developers ramping from Ruby-style application work into this Zig codebase, see [docs/LEVELUP.md](/home/douglas/src/wt-zig/docs/LEVELUP.md).
 
 ## Current Scope
 

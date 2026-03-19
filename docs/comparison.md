@@ -41,6 +41,15 @@ The Zig version is a native port with the same practical feature set, but it use
 - Lower third-party dependency surface at the project level. The Zig project metadata is minimal compared with the Go module dependency set.
 - Better fit if this repo is the one you want to evolve deliberately, because the design decisions and parity criteria are documented directly in [port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
 
+The later maintenance passes made that Zig advantage more concrete:
+
+- output behavior now flows through an explicit runtime context instead of mutable global state
+- process execution now has a single shared wrapper in `src/process.zig`
+- larger command implementations were split into support modules instead of continuing to grow inline
+- maintainer-facing docs now include both [architecture.md](/home/douglas/src/wt-zig/docs/architecture.md) and [LEVELUP.md](/home/douglas/src/wt-zig/docs/LEVELUP.md)
+
+That means `wt-zig` is no longer just "the port in Zig". It is also the codebase with the more intentional internal maintenance story.
+
 ## When To Use Which
 
 Use Go `wt` when:
@@ -71,6 +80,8 @@ Reasons:
 - the Zig code is already structured around reusable layers
 - the parity harness gives a direct regression signal against the Go implementation
 - the repo handoff notes document the architecture and maintenance boundaries
+- the latest refactor pass extracted stable support seams for config, process execution, `init`, and `migrate`
+- there is now an onboarding path for maintainers moving from Ruby-style application development into Zig, via [LEVELUP.md](/home/douglas/src/wt-zig/docs/LEVELUP.md)
 
 If the question is "which is easier for the average outside contributor to maintain?", the answer is probably `wt`.
 
@@ -94,6 +105,22 @@ Zig drawbacks:
 - smaller contributor pool
 - more stdlib/toolchain sharp edges, especially in Zig `0.15.2`
 - practical parity does not mean byte-for-byte identical output in every edge case
+- some maintainability wins in Zig come from being disciplined about ownership and helper boundaries; that is powerful, but it demands more care than a typical Ruby or Go CLI codebase
+
+## What We Learned During The Port
+
+The biggest practical lesson is that the long-term value of the Zig version is not just raw feature parity. It is that the repo now makes several important things explicit:
+
+- where output mode is decided
+- where process execution is normalized
+- where config parsing/path logic lives
+- where command orchestration stops and support logic begins
+
+That makes `wt-zig` easier to reason about when debugging behavior regressions.
+
+The second big lesson is that parity needs tooling, not confidence. The parity harness ended up being one of the strongest parts of the Zig repo because it turned "I think this matches Go" into a repeatable check.
+
+The third big lesson is that Zig benefits from small support modules once a command crosses a certain size. Leaving everything inline works for early porting speed, but extracted support modules are a better end state for a maintained codebase.
 
 ## Recommendation
 
