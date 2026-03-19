@@ -121,6 +121,46 @@ pub fn buildWorktreePath(
     return rendered;
 }
 
+pub fn cleanupWorktreePath(cfg: *const config.Resolved, worktree_path: []const u8) !void {
+    if (worktree_path.len == 0) return;
+
+    std.fs.deleteTreeAbsolute(worktree_path) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
+
+    const abs_root = try std.fs.path.resolve(std.heap.page_allocator, &.{cfg.root});
+    defer std.heap.page_allocator.free(abs_root);
+
+    const abs_worktree = try std.fs.path.resolve(std.heap.page_allocator, &.{worktree_path});
+    defer std.heap.page_allocator.free(abs_worktree);
+
+    const parent = std.fs.path.dirname(abs_worktree) orelse return;
+    if (!isWithinRoot(abs_root, parent)) return;
+
+    var dir = std.fs.openDirAbsolute(parent, .{ .iterate = true }) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    defer dir.close();
+
+    var iter = dir.iterate();
+    if ((try iter.next()) == null) {
+        std.fs.deleteDirAbsolute(parent) catch |err| switch (err) {
+            error.FileNotFound => {},
+            error.DirNotEmpty => {},
+            else => return err,
+        };
+    }
+}
+
+fn isWithinRoot(root: []const u8, candidate: []const u8) bool {
+    if (!std.mem.startsWith(u8, candidate, root)) return false;
+    if (candidate.len == root.len) return true;
+    if (root.len == 0) return false;
+    return root[root.len - 1] == std.fs.path.sep or candidate[root.len] == std.fs.path.sep;
+}
+
 fn makePathAbsolute(pathname: []const u8) !void {
     if (!std.fs.path.isAbsolute(pathname)) {
         return std.fs.cwd().makePath(pathname);
@@ -330,4 +370,44 @@ test "buildWorktreePath creates parent directories" {
     const repo_dir = try std.fs.path.join(allocator, &.{ worktree_root, "repo" });
     defer allocator.free(repo_dir);
     try std.fs.cwd().access(repo_dir, .{});
+}
+
+test "cleanupWorktreePath removes empty parent directory inside root" {
+    const allocator = std.testing.allocator;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const worktree_root = try std.fs.path.join(allocator, &.{ root, "worktrees" });
+    defer allocator.free(worktree_root);
+    const repo_dir = try std.fs.path.join(allocator, &.{ worktree_root, "repo" });
+    defer allocator.free(repo_dir);
+    const worktree_path = try std.fs.path.join(allocator, &.{ repo_dir, "feature-a" });
+    defer allocator.free(worktree_path);
+
+    try std.fs.makeDirAbsolute(worktree_root);
+    try std.fs.makeDirAbsolute(repo_dir);
+    try std.fs.makeDirAbsolute(worktree_path);
+
+    const cfg = config.Resolved{
+        .root = worktree_root,
+        .strategy = "global",
+        .pattern = "",
+        .separator = "/",
+        .hooks = .{},
+        .config_file_path = "/tmp/config.toml",
+        .config_file_found = false,
+        .sources = .{
+            .root = "default",
+            .strategy = "default",
+            .pattern = "default",
+            .separator = "default",
+        },
+    };
+
+    try cleanupWorktreePath(&cfg, worktree_path);
+
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(repo_dir, .{}));
 }

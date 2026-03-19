@@ -44,8 +44,8 @@ pub fn printRoot(writer: anytype) !void {
         \\  --config <path>
         \\      Load configuration from a specific TOML file
         \\
-        \\Current phases include config loading plus help, version, and list.
-        \\Later phases will add path strategies, checkout/create, hooks, and PR/MR support.
+        \\Current phases include config loading, path resolution, checkout/create,
+        \\hooks, and non-interactive remove/prune/cleanup support.
         \\
         \\Run `wt help <command>` for command-specific usage.
         \\

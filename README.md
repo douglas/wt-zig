@@ -12,7 +12,8 @@ The current slices keep the scope intentionally small:
 - resolve effective worktree patterns from strategy aliases and custom templates
 - add non-interactive `checkout` and `create` flows on top of the path layer
 - add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
-- run configured pre/post hooks for `checkout` and `create`
+- run configured pre/post hooks for `checkout`, `create`, and `remove`
+- add non-interactive `remove`, `prune`, and merged-branch `cleanup` flows
 - implement `help`, `version`, and `list`
 - make `list` use `git worktree list --porcelain`
 - expose `wt config show` and `wt config path`, including effective pattern display
@@ -28,6 +29,10 @@ wt ls
 wt checkout <branch>
 wt co <branch>
 wt create <branch> [base-branch]
+wt remove <branch>
+wt rm <branch>
+wt prune
+wt cleanup
 wt info
 wt config show
 wt config path

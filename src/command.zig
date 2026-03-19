@@ -8,6 +8,9 @@ pub const Kind = enum {
     checkout,
     create,
     info,
+    remove,
+    prune,
+    cleanup,
 };
 
 pub const Spec = struct {
@@ -83,6 +86,33 @@ pub const all = [_]Spec{
         .summary = "Show resolved worktree configuration and strategy details",
         .usage = "wt info",
         .details = "Display the active config path, effective pattern, strategy catalog, and configured hooks.",
+    },
+    .{
+        .kind = .remove,
+        .name = "remove",
+        .aliases = &.{"rm"},
+        .display = "remove, rm",
+        .summary = "Remove a linked worktree for a branch",
+        .usage = "wt remove <branch>",
+        .details = "Remove an existing linked worktree, run remove hooks, and clean up the worktree directory.",
+    },
+    .{
+        .kind = .prune,
+        .name = "prune",
+        .aliases = &.{},
+        .display = "prune",
+        .summary = "Prune stale Git worktree administrative files",
+        .usage = "wt prune",
+        .details = "Run `git worktree prune` to clean stale administrative metadata.",
+    },
+    .{
+        .kind = .cleanup,
+        .name = "cleanup",
+        .aliases = &.{},
+        .display = "cleanup",
+        .summary = "Remove worktrees for merged branches",
+        .usage = "wt cleanup",
+        .details = "Find linked worktrees whose branches are merged into the default base branch and remove them.",
     },
 };
 

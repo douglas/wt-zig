@@ -1,12 +1,15 @@
 const std = @import("std");
 const command = @import("command.zig");
 const config = @import("config.zig");
+const cleanup_cmd = @import("commands/cleanup.zig");
 const config_cmd = @import("commands/config.zig");
 const checkout_cmd = @import("commands/checkout.zig");
 const create_cmd = @import("commands/create.zig");
 const help_cmd = @import("commands/help.zig");
 const info_cmd = @import("commands/info.zig");
 const list_cmd = @import("commands/list.zig");
+const prune_cmd = @import("commands/prune.zig");
+const remove_cmd = @import("commands/remove.zig");
 const version_cmd = @import("commands/version.zig");
 
 pub fn run(
@@ -55,6 +58,9 @@ pub fn run(
         .checkout => checkout_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .create => create_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
         .info => info_cmd.run(&loaded_config.resolved, stdout, stderr),
+        .remove => remove_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
+        .prune => prune_cmd.run(allocator, args[1..], stdout, stderr),
+        .cleanup => cleanup_cmd.run(allocator, &loaded_config.resolved, args[1..], stdout, stderr),
     };
 }
 

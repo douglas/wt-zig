@@ -71,6 +71,16 @@ pub fn branchExists(allocator: std.mem.Allocator, branch: []const u8) !bool {
     return gitQuietSuccess(allocator, &.{ "show-ref", "--verify", "--quiet", remote_ref });
 }
 
+pub fn getMergedBranches(allocator: std.mem.Allocator, base: []const u8) ![][]u8 {
+    const output = try gitOutput(
+        allocator,
+        &.{ "branch", "--merged", base, "--format=%(refname:short)" },
+    );
+    defer allocator.free(output);
+
+    return parseBranchLines(allocator, output, base);
+}
+
 pub const ParsedRemote = struct {
     host: []const u8,
     owner: []const u8,
@@ -128,6 +138,30 @@ fn normalizeBaseRef(allocator: std.mem.Allocator, ref: []const u8) ![]const u8 {
     }
 
     return allocator.dupe(u8, ref);
+}
+
+fn parseBranchLines(allocator: std.mem.Allocator, output: []const u8, base: []const u8) ![][]u8 {
+    var branches = std.ArrayList([]u8).empty;
+    errdefer {
+        for (branches.items) |branch| allocator.free(branch);
+        branches.deinit(allocator);
+    }
+
+    var lines = std.mem.splitScalar(u8, output, '\n');
+    while (lines.next()) |line| {
+        const branch = std.mem.trim(u8, line, " \r\n\t");
+        if (branch.len == 0 or
+            std.mem.eql(u8, branch, base) or
+            std.mem.eql(u8, branch, "main") or
+            std.mem.eql(u8, branch, "master"))
+        {
+            continue;
+        }
+
+        try branches.append(allocator, try allocator.dupe(u8, branch));
+    }
+
+    return branches.toOwnedSlice(allocator);
 }
 
 fn getMainWorktreePath(
@@ -218,4 +252,17 @@ test "parseRemoteURL rejects invalid inputs" {
     try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL(""));
     try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL("https://github.com"));
     try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL("git@github.com:repo.git"));
+}
+
+test "parseBranchLines filters base and empty lines" {
+    const allocator = std.testing.allocator;
+    const branches = try parseBranchLines(allocator, "main\nfeature/a\nmaster\n\nfeature/b\n", "main");
+    defer {
+        for (branches) |branch| allocator.free(branch);
+        allocator.free(branches);
+    }
+
+    try std.testing.expectEqual(@as(usize, 2), branches.len);
+    try std.testing.expectEqualStrings("feature/a", branches[0]);
+    try std.testing.expectEqualStrings("feature/b", branches[1]);
 }
