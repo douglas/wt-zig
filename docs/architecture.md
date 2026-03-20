@@ -34,6 +34,7 @@ When shared behavior becomes real infrastructure, give it a stable helper instea
 
 - `src/process.zig` is the single place that wraps `std.process.Child.run`
 - `src/config_support.zig` holds config path/file parsing and default-config writing
+- `src/copy_files.zig` holds file-copy logic for the `[copy_files]` config feature
 - `src/commands/init_support.zig` holds shell detection and shell-block file operations
 - `src/commands/migrate_support.zig` holds migrate planning and execution
 
