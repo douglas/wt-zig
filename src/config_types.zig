@@ -1,5 +1,15 @@
 const std = @import("std");
 
+pub const CopyFilesRepoOverride = struct {
+    repo_name: []const u8,
+    paths: []const []const u8,
+};
+
+pub const CopyFiles = struct {
+    paths: []const []const u8 = &.{},
+    repo_overrides: []const CopyFilesRepoOverride = &.{},
+};
+
 pub const Hooks = struct {
     pre_create: []const []const u8 = &.{},
     post_create: []const []const u8 = &.{},
@@ -26,6 +36,7 @@ pub const Resolved = struct {
     pattern: []const u8,
     separator: []const u8,
     hooks: Hooks,
+    copy_files: CopyFiles = .{},
     config_file_path: []const u8,
     config_file_found: bool,
     sources: Sources,

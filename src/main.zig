@@ -24,6 +24,7 @@ test {
     std.testing.refAllDecls(@import("config.zig"));
     std.testing.refAllDecls(@import("config_support.zig"));
     std.testing.refAllDecls(@import("config_types.zig"));
+    std.testing.refAllDecls(@import("copy_files.zig"));
     std.testing.refAllDecls(@import("fs.zig"));
     std.testing.refAllDecls(@import("hooks.zig"));
     std.testing.refAllDecls(@import("output.zig"));

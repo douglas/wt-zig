@@ -11,6 +11,7 @@ pub const ParsedFile = struct {
     pattern: ?[]const u8 = null,
     separator: ?[]const u8 = null,
     hooks: Hooks = .{},
+    copy_files: types.CopyFiles = .{},
 
     pub fn deinit(self: *ParsedFile, allocator: std.mem.Allocator) void {
         if (self.root) |value| allocator.free(value);
@@ -27,6 +28,13 @@ pub const ParsedFile = struct {
         freeHookList(allocator, self.hooks.post_pr);
         freeHookList(allocator, self.hooks.pre_mr);
         freeHookList(allocator, self.hooks.post_mr);
+        freeStringList(allocator, self.copy_files.paths);
+        for (self.copy_files.repo_overrides) |override| {
+            allocator.free(override.repo_name);
+            freeStringList(allocator, override.paths);
+        }
+        if (self.copy_files.repo_overrides.len > 0)
+            allocator.free(self.copy_files.repo_overrides);
     }
 };
 
@@ -55,6 +63,14 @@ pub const default_config_template =
     \\# post_create = ["test -f $WT_MAIN/.env && cp $WT_MAIN/.env $WT_PATH/.env || true"]
     \\# post_checkout = ["cd $WT_PATH && npm install"]
     \\# pre_remove = ["echo Removing $WT_PATH"]
+    \\
+    \\[copy_files]
+    \\# Files to copy from the main worktree into each new worktree.
+    \\# paths = [".env", "config/local.yml"]
+    \\#
+    \\# Per-repo overrides add extra files when the repo name matches:
+    \\# [copy_files.my-project]
+    \\# paths = [".env.local", ".env.test.local"]
     \\
 ;
 
@@ -102,6 +118,7 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
 
     var parsed: ParsedFile = .{};
     var current_section: ?[]const u8 = null;
+    var repo_overrides = std.ArrayList(types.CopyFilesRepoOverride).empty;
     var lines = std.mem.splitScalar(u8, buffer, '\n');
 
     while (lines.next()) |raw_line| {
@@ -122,8 +139,22 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
 
         if (value[0] == '[') {
             const items = try parseStringArray(allocator, value);
-            if (current_section != null and std.mem.eql(u8, current_section.?, "hooks")) {
-                setHookField(&parsed.hooks, key, items);
+            if (current_section) |section| {
+                if (std.mem.eql(u8, section, "hooks")) {
+                    setHookField(&parsed.hooks, key, items);
+                } else if (std.mem.eql(u8, section, "copy_files")) {
+                    if (std.mem.eql(u8, key, "paths")) {
+                        parsed.copy_files.paths = items;
+                    }
+                } else if (std.mem.startsWith(u8, section, "copy_files.")) {
+                    if (std.mem.eql(u8, key, "paths")) {
+                        const repo_name = section["copy_files.".len..];
+                        try repo_overrides.append(allocator, .{
+                            .repo_name = try allocator.dupe(u8, repo_name),
+                            .paths = items,
+                        });
+                    }
+                }
             }
             continue;
         }
@@ -137,6 +168,7 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
         }
     }
 
+    parsed.copy_files.repo_overrides = try repo_overrides.toOwnedSlice(allocator);
     return parsed;
 }
 
@@ -184,7 +216,9 @@ fn setHookField(hooks: *Hooks, key: []const u8, value: []const []const u8) void 
     if (std.mem.eql(u8, key, "post_mr")) hooks.post_mr = value;
 }
 
-fn freeHookList(allocator: std.mem.Allocator, values: []const []const u8) void {
+fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void {
     for (values) |value| allocator.free(value);
     if (values.len > 0) allocator.free(values);
 }
+
+const freeHookList = freeStringList;

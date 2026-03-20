@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const copy_files = @import("../copy_files.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const proc = @import("../process.zig");
@@ -68,6 +69,8 @@ pub fn run(
 
     const success = try runGitCreate(allocator, target_path, branch, base, stderr);
     if (!success) return 1;
+
+    copy_files.copyFiles(allocator, cfg, info.name, info.main, target_path, stderr);
 
     hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 

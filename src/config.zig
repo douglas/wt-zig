@@ -4,6 +4,8 @@ const support = @import("config_support.zig");
 const types = @import("config_types.zig");
 
 pub const Hooks = types.Hooks;
+pub const CopyFiles = types.CopyFiles;
+pub const CopyFilesRepoOverride = types.CopyFilesRepoOverride;
 pub const Sources = types.Sources;
 pub const Resolved = types.Resolved;
 pub const LoadResult = types.LoadResult;
@@ -86,6 +88,7 @@ fn applyParsedFile(
     }
 
     resolved.hooks = parsed.hooks;
+    resolved.copy_files = parsed.copy_files;
 }
 
 fn applyEnvOverrides(
@@ -174,6 +177,50 @@ test "parseFile reads scalar settings and hooks" {
     try std.testing.expectEqualStrings("-", parsed.separator.?);
     try std.testing.expectEqual(@as(usize, 2), parsed.hooks.post_create.len);
     try std.testing.expectEqualStrings("cleanup", parsed.hooks.pre_remove[0]);
+}
+
+test "parseFile reads copy_files with global and per-repo paths" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{
+        .sub_path = "config.toml",
+        .data =
+        \\root = "~/worktrees"
+        \\
+        \\[copy_files]
+        \\paths = [".env", "config/local.yml"]
+        \\
+        \\[copy_files.campaigns]
+        \\paths = [".env.local", ".env.test.local"]
+        \\
+        \\[copy_files.other-repo]
+        \\paths = ["secrets.yml"]
+        \\
+        ,
+    });
+
+    const config_path = try dir.dir.realpathAlloc(allocator, "config.toml");
+    defer allocator.free(config_path);
+
+    var parsed = try parseFile(allocator, config_path);
+    defer parsed.deinit(allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.paths.len);
+    try std.testing.expectEqualStrings(".env", parsed.copy_files.paths[0]);
+    try std.testing.expectEqualStrings("config/local.yml", parsed.copy_files.paths[1]);
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.repo_overrides.len);
+
+    try std.testing.expectEqualStrings("campaigns", parsed.copy_files.repo_overrides[0].repo_name);
+    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.repo_overrides[0].paths.len);
+    try std.testing.expectEqualStrings(".env.local", parsed.copy_files.repo_overrides[0].paths[0]);
+    try std.testing.expectEqualStrings(".env.test.local", parsed.copy_files.repo_overrides[0].paths[1]);
+
+    try std.testing.expectEqualStrings("other-repo", parsed.copy_files.repo_overrides[1].repo_name);
+    try std.testing.expectEqual(@as(usize, 1), parsed.copy_files.repo_overrides[1].paths.len);
+    try std.testing.expectEqualStrings("secrets.yml", parsed.copy_files.repo_overrides[1].paths[0]);
 }
 
 test "load applies defaults then file then env overrides" {

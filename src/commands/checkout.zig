@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const copy_files = @import("../copy_files.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
@@ -165,6 +166,8 @@ pub fn checkoutBranch(
 
     const success = try runGitWorktreeAdd(allocator, target_path, &.{branch}, stderr);
     if (!success) return error.GitCommandFailed;
+
+    copy_files.copyFiles(allocator, cfg, info.name, info.main, target_path, stderr);
 
     hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
 
