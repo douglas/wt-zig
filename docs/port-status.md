@@ -1,6 +1,6 @@
 # Port Status
 
-This document is the durable handoff for the Zig port of [`/home/douglas/src/wt`](/home/douglas/src/wt).
+This document is the durable handoff for the Zig port of [`wt`](https://github.com/timvw/wt).
 
 ## Current State
 
@@ -220,8 +220,8 @@ zig build test
 In the Codex sandbox, Zig needs explicit cache locations:
 
 ```text
-ZIG_GLOBAL_CACHE_DIR=/home/douglas/src/wt-zig/.zig-global-cache
-ZIG_LOCAL_CACHE_DIR=/home/douglas/src/wt-zig/.zig-cache
+ZIG_GLOBAL_CACHE_DIR=.zig-global-cache
+ZIG_LOCAL_CACHE_DIR=.zig-cache
 ```
 
 Useful smoke-test patterns that already proved valuable:
@@ -250,32 +250,5 @@ No intentional feature gaps remain versus the current Go CLI command surface. An
 - bug-fix parity where Zig behavior diverges from Go in edge cases
 - platform polish, especially broader Windows/PowerShell verification
 - output-format refinements where the shape is compatible but not byte-for-byte identical
-- chasing down the two current Go-baseline harness failures if they are fixed upstream in `/home/douglas/src/wt`
+- chasing down the two current Go-baseline harness failures if they are fixed upstream in [wt](https://github.com/timvw/wt)
 
-## Codex Setup Notes
-
-The local feature workflow currently uses prompts, not skills:
-
-- `~/.codex/prompts/start-feature.md`
-- `~/.codex/prompts/close-feature.md`
-
-They exist and are usable, but they are not installed under `~/.codex/skills`.
-
-The prompt workflow now treats `~/projects/<repository>/<branch>/work_log.md` as the durable source of truth for feature state:
-
-- `/start-feature` must create exactly one open feature entry before implementation begins.
-- Normal feature work should verify that open entry still exists before editing code.
-- `/close-feature` must refuse to proceed when there is no open entry and must close that entry at the end.
-
-Separately, broken Claude-ported skills were repaired by:
-
-- adding valid top-of-file frontmatter
-- adding minimal `agents/openai.yaml`
-
-Skills repaired:
-
-- `ruby-style`
-- `minitest-style`
-- `basecamp-rails-best-practices`
-
-If Codex still behaves as if those skills are missing, restart the session so discovery reloads their metadata.

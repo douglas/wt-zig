@@ -1,6 +1,6 @@
 # wt vs wt-zig
 
-This document compares the original Go implementation in [`/home/douglas/src/wt`](/home/douglas/src/wt) with the Zig port in this repository.
+This document compares the original Go implementation ([`wt`](https://github.com/timvw/wt)) with the Zig port in this repository.
 
 ## Status
 
@@ -31,7 +31,7 @@ The Zig version is a native port with the same practical feature set, but it use
 
 - Broader distribution story. The Go repo already documents Homebrew, Scoop, WinGet, Linux packages, and `go install`.
 - More familiar stack for most contributors. Go, Cobra, and common Go CLI tooling are easier to approach for a wider group of developers.
-- Smaller binary in the current local installs. The Go build at [`~/.bin/wt`](/home/douglas/.bin/wt) is about `6.6M`, while the Zig build at [`~/.bin/wt-zig`](/home/douglas/.bin/wt-zig) is about `17M`.
+- Smaller binary. The Go build is about `6.6M`, while the Zig build is about `17M`.
 - Better choice if one implementation needs to remain the canonical external reference.
 
 ## What Is Better In Zig
@@ -39,7 +39,7 @@ The Zig version is a native port with the same practical feature set, but it use
 - More explicit internal separation of concerns. Shared logic lives in dedicated modules instead of being spread across a framework-shaped command tree.
 - Stronger parity verification loop. This repo includes `scripts/parity-harness.sh`, which builds both CLIs, runs the Go e2e suite against both, and flags Zig-only regressions.
 - Lower third-party dependency surface at the project level. The Zig project metadata is minimal compared with the Go module dependency set.
-- Better fit if this repo is the one you want to evolve deliberately, because the design decisions and parity criteria are documented directly in [port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
+- Better fit if this repo is the one you want to evolve deliberately, because the design decisions and parity criteria are documented directly in [port-status.md](port-status.md).
 
 The Zig version also includes features not present in Go `wt`:
 
@@ -50,7 +50,7 @@ The later maintenance passes made that Zig advantage more concrete:
 - output behavior now flows through an explicit runtime context instead of mutable global state
 - process execution now has a single shared wrapper in `src/process.zig`
 - larger command implementations were split into support modules instead of continuing to grow inline
-- maintainer-facing docs now include both [architecture.md](/home/douglas/src/wt-zig/docs/architecture.md) and [LEVELUP.md](/home/douglas/src/wt-zig/docs/LEVELUP.md)
+- maintainer-facing docs now include both [architecture.md](architecture.md) and [LEVELUP.md](LEVELUP.md)
 
 That means `wt-zig` is no longer just "the port in Zig". It is also the codebase with the more intentional internal maintenance story.
 
@@ -70,10 +70,10 @@ Use Zig `wt-zig` when:
 - you want to keep iterating in Zig rather than in Go
 - you are operating primarily on the same environment where parity was verified
 
-For this machine, the practical default is:
+A practical default is:
 
-- use [`~/.bin/wt-zig`](/home/douglas/.bin/wt-zig) as the daily driver
-- keep [`~/.bin/wt`](/home/douglas/.bin/wt) as the reference implementation and fallback
+- use `wt-zig` as the daily driver
+- keep Go `wt` as the reference implementation and fallback
 
 ## Maintenance Tradeoffs
 
@@ -85,7 +85,7 @@ Reasons:
 - the parity harness gives a direct regression signal against the Go implementation
 - the repo handoff notes document the architecture and maintenance boundaries
 - the latest refactor pass extracted stable support seams for config, process execution, `init`, and `migrate`
-- there is now an onboarding path for maintainers moving from Ruby-style application development into Zig, via [LEVELUP.md](/home/douglas/src/wt-zig/docs/LEVELUP.md)
+- there is now an onboarding path for maintainers moving from Ruby-style application development into Zig, via [LEVELUP.md](LEVELUP.md)
 
 If the question is "which is easier for the average outside contributor to maintain?", the answer is probably `wt`.
 

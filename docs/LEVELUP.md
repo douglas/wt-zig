@@ -49,10 +49,10 @@ That matters because most work in this repo is not greenfield product design any
 
 Before touching code, read these in order:
 
-1. [README.md](/home/douglas/src/wt-zig/README.md)
-2. [architecture.md](/home/douglas/src/wt-zig/docs/architecture.md)
-3. [port-status.md](/home/douglas/src/wt-zig/docs/port-status.md)
-4. [comparison.md](/home/douglas/src/wt-zig/docs/comparison.md)
+1. [README.md](../README.md)
+2. [architecture.md](architecture.md)
+3. [port-status.md](port-status.md)
+4. [comparison.md](comparison.md)
 
 Use them differently:
 
@@ -246,7 +246,7 @@ Common mapping:
 - wrong git/worktree discovery: `src/git/`
 - wrong CLI flow but right helper behavior: command file
 
-If the behavior is supposed to match the Go implementation, compare with `/home/douglas/src/wt` before deciding what "correct" means.
+If the behavior is supposed to match the Go implementation, compare with [`wt`](https://github.com/timvw/wt) before deciding what "correct" means.
 
 ## How To Add A Small Feature
 
@@ -306,8 +306,8 @@ zig build parity
 In the Codex sandbox, use the explicit cache dirs already documented in the repo:
 
 ```text
-ZIG_GLOBAL_CACHE_DIR=/home/douglas/src/wt-zig/.zig-global-cache
-ZIG_LOCAL_CACHE_DIR=/home/douglas/src/wt-zig/.zig-cache
+ZIG_GLOBAL_CACHE_DIR=.zig-global-cache
+ZIG_LOCAL_CACHE_DIR=.zig-cache
 ```
 
 `zig build parity` matters more than a normal unit test pass when behavior changes, because this repo’s completion standard is parity against the Go baseline, not just internal consistency.
