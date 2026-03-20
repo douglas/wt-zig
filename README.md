@@ -45,6 +45,7 @@ wt co [branch]
 wt create <branch> [base-branch]
 wt remove [branch] [--force|-f]
 wt rm [branch] [--force|-f]
+wt done [--force|-f]
 wt prune
 wt cleanup [--dry-run] [--force|-f]
 wt migrate [--force|-f]

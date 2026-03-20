@@ -17,6 +17,7 @@ pub const Kind = enum {
     examples,
     shellenv,
     init,
+    done,
 };
 
 pub const Spec = struct {
@@ -173,6 +174,15 @@ pub const all = [_]Spec{
         .summary = "Install wt shell integration into your shell rc file",
         .usage = "wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]",
         .details = "Append, update, preview, or remove an idempotent `wt shellenv` block in the detected bash, zsh, or PowerShell config file.",
+    },
+    .{
+        .kind = .done,
+        .name = "done",
+        .aliases = &.{},
+        .display = "done",
+        .summary = "Remove the current linked worktree and navigate back",
+        .usage = "wt done [--force|-f]",
+        .details = "Detect the linked worktree for the current directory, remove it using the standard removal flow (hooks and cleanup), and navigate back to the main project directory.",
     },
 };
 

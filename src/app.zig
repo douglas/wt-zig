@@ -4,6 +4,7 @@ const config = @import("config.zig");
 const output = @import("output.zig");
 const cleanup_cmd = @import("commands/cleanup.zig");
 const config_cmd = @import("commands/config.zig");
+const done_cmd = @import("commands/done.zig");
 const checkout_cmd = @import("commands/checkout.zig");
 const create_cmd = @import("commands/create.zig");
 const examples_cmd = @import("commands/examples.zig");
@@ -78,6 +79,7 @@ pub fn run(
         .create => create_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .info => info_cmd.run(ctx, &loaded_config.resolved, stdout, stderr),
         .remove => remove_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .done => done_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .prune => prune_cmd.run(ctx, args[1..], stdout, stderr),
         .cleanup => cleanup_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .migrate => migrate_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
