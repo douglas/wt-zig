@@ -11,6 +11,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `checkout` / `co`
 - `create`
 - `remove` / `rm`
+- `done`
 - `prune`
 - `cleanup`
 - `migrate`
@@ -196,6 +197,13 @@ Commit: `2ee74d4`
 - Fixed remaining parity mismatches in `checkout` fetch fallback, `cleanup --force` wording, `help` JSON command paths, and `examples` output/argument rejection.
 - Verified the full Go scenario suite now matches the Go baseline exactly in this environment: both binaries report `Passed: 88`, `Failed: 2`, `Skipped: 4`.
 - The two remaining harness failures are inherited from the Go baseline here: `config/config_show_defaults` and `init/init_uninstall`.
+
+### Phase 17: done command
+
+- Added `wt done [--force|-f]` to remove the current linked worktree.
+- Detects which worktree the cwd is inside, skipping the main worktree.
+- Reuses `removeWorktree` from `remove.zig` for hooks, git removal, and path cleanup.
+- Emits the `wt navigating to:` marker so shell integration auto-cds back to the project root.
 
 ## Verification Patterns
 

@@ -19,7 +19,7 @@ The current port now covers the full user-facing command surface from `wt`, incl
 - add `checkout` and `create` flows on top of the path layer
 - add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
 - run configured pre/post hooks for `checkout`, `create`, `remove`, `pr`, and `mr`
-- add `remove`, `prune`, `cleanup`, and `migrate`
+- add `remove`, `done`, `prune`, `cleanup`, and `migrate`
 - add `pr` and `mr` flows that resolve branches through `gh` and `glab`
 - add interactive selectors for `checkout`, `remove`, `pr`, and `mr` in text mode
 - add confirmation prompts for `cleanup` in text mode

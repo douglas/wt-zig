@@ -41,6 +41,10 @@ The Zig version is a native port with the same practical feature set, but it use
 - Lower third-party dependency surface at the project level. The Zig project metadata is minimal compared with the Go module dependency set.
 - Better fit if this repo is the one you want to evolve deliberately, because the design decisions and parity criteria are documented directly in [port-status.md](/home/douglas/src/wt-zig/docs/port-status.md).
 
+The Zig version also includes features not present in Go `wt`:
+
+- `wt done [--force|-f]` — remove the current linked worktree and navigate back to the project root, without needing to name the branch or use an interactive selector
+
 The later maintenance passes made that Zig advantage more concrete:
 
 - output behavior now flows through an explicit runtime context instead of mutable global state
