@@ -3,7 +3,7 @@ const config = @import("../config.zig");
 const output = @import("../output.zig");
 const path = @import("../path.zig");
 
-pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Resolved, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
         try printHelp(stdout);
         return 0;
@@ -74,7 +74,7 @@ pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Res
     return 1;
 }
 
-pub fn printHelp(writer: anytype) !void {
+pub fn printHelp(writer: *std.Io.Writer) !void {
     try writer.writeAll(
         \\Manage wt configuration.
         \\
@@ -92,7 +92,7 @@ pub fn printHelp(writer: anytype) !void {
     );
 }
 
-pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
+pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
     const config_status = if (cfg.config_file_found) "found" else "not found";
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "(none)";
@@ -123,7 +123,7 @@ pub fn printShow(cfg: *const config.Resolved, writer: anytype) !void {
     );
 }
 
-fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: anytype) !void {
+fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Writer) !void {
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "(none)";
     const pattern_source = if (pattern_info) |info| info.source else cfg.sources.pattern;

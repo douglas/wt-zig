@@ -27,8 +27,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     var branch: []const u8 = undefined;
@@ -122,7 +122,7 @@ pub fn checkoutBranch(
     cfg: *const config.Resolved,
     branch: []const u8,
     options: CheckoutOptions,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
     defer git_repo.freeRepoInfo(allocator, &info);
@@ -181,7 +181,7 @@ fn fetchBranch(
     allocator: std.mem.Allocator,
     branch: []const u8,
     options: PrefetchOptions,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !void {
     const primary = try allocator.dupe([]const u8, &.{ "git", "fetch", "origin", branch });
     defer allocator.free(primary);
@@ -215,7 +215,7 @@ fn runGitWorktreeAdd(
     allocator: std.mem.Allocator,
     path: []const u8,
     trailing_args: []const []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !bool {
     var args = std.ArrayList([]const u8).empty;
     defer args.deinit(allocator);
@@ -230,7 +230,7 @@ fn runGitCommand(
     allocator: std.mem.Allocator,
     argv: []const []const u8,
     failure_prefix: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !bool {
     const result = try runGitCommandResult(allocator, argv);
     defer allocator.free(result.stdout);

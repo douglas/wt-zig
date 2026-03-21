@@ -7,7 +7,7 @@ pub fn selectItem(
     allocator: std.mem.Allocator,
     label: []const u8,
     items: []const []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !struct { index: usize, value: []const u8 } {
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();
@@ -35,7 +35,7 @@ pub fn selectItem(
 pub fn confirmPrompt(
     allocator: std.mem.Allocator,
     label: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !bool {
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();

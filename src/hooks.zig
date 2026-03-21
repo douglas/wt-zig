@@ -4,16 +4,11 @@ const config = @import("config.zig");
 const path = @import("path.zig");
 
 pub fn getHooks(cfg: *const config.Resolved, hook_name: []const u8) []const []const u8 {
-    if (std.mem.eql(u8, hook_name, "pre_create")) return cfg.hooks.pre_create;
-    if (std.mem.eql(u8, hook_name, "post_create")) return cfg.hooks.post_create;
-    if (std.mem.eql(u8, hook_name, "pre_checkout")) return cfg.hooks.pre_checkout;
-    if (std.mem.eql(u8, hook_name, "post_checkout")) return cfg.hooks.post_checkout;
-    if (std.mem.eql(u8, hook_name, "pre_remove")) return cfg.hooks.pre_remove;
-    if (std.mem.eql(u8, hook_name, "post_remove")) return cfg.hooks.post_remove;
-    if (std.mem.eql(u8, hook_name, "pre_pr")) return cfg.hooks.pre_pr;
-    if (std.mem.eql(u8, hook_name, "post_pr")) return cfg.hooks.post_pr;
-    if (std.mem.eql(u8, hook_name, "pre_mr")) return cfg.hooks.pre_mr;
-    if (std.mem.eql(u8, hook_name, "post_mr")) return cfg.hooks.post_mr;
+    inline for (comptime std.meta.fields(@TypeOf(cfg.hooks))) |field| {
+        if (std.mem.eql(u8, hook_name, field.name)) {
+            return @field(cfg.hooks, field.name);
+        }
+    }
     return &.{};
 }
 
@@ -40,7 +35,7 @@ pub fn runHooks(
     hook_name: []const u8,
     hook_commands: []const []const u8,
     hook_env: *const std.process.EnvMap,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !void {
     var current_env = try std.process.getEnvMap(allocator);
     defer current_env.deinit();
@@ -54,7 +49,7 @@ fn runHooksWithEnvMap(
     hook_name: []const u8,
     hook_commands: []const []const u8,
     hook_env: *const std.process.EnvMap,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !void {
     if (hook_commands.len == 0) return;
 
@@ -134,8 +129,8 @@ test "getHooks returns configured slice" {
         },
     };
 
-    try std.testing.expectEqual(@as(usize, 1), getHooks(&cfg, "pre_create").len);
-    try std.testing.expectEqual(@as(usize, 0), getHooks(&cfg, "missing").len);
+    try std.testing.expectEqual(1, getHooks(&cfg, "pre_create").len);
+    try std.testing.expectEqual(0, getHooks(&cfg, "missing").len);
 }
 
 test "buildHookEnv populates expected values" {
@@ -163,7 +158,9 @@ test "runHooks respects WT_HOOKS_DISABLED" {
     defer hook_env.deinit();
     try hook_env.put("WT_PATH", "/tmp/path");
 
-    try runHooksWithEnvMap(allocator, &current_env, "pre_create", &.{"false"}, &hook_env, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    try runHooksWithEnvMap(allocator, &current_env, "pre_create", &.{"false"}, &hook_env, &discard);
 }
 
 test "runHooks aborts pre hooks and tolerates post hooks" {
@@ -172,10 +169,13 @@ test "runHooks aborts pre hooks and tolerates post hooks" {
     defer hook_env.deinit();
     try hook_env.put("WT_PATH", "/tmp/path");
 
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+
     try std.testing.expectError(
         error.HookCommandFailed,
-        runHooks(allocator, "pre_create", &.{"false"}, &hook_env, std.io.null_writer),
+        runHooks(allocator, "pre_create", &.{"false"}, &hook_env, &discard),
     );
 
-    try runHooks(allocator, "post_create", &.{"false"}, &hook_env, std.io.null_writer);
+    try runHooks(allocator, "post_create", &.{"false"}, &hook_env, &discard);
 }

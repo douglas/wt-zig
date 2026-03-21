@@ -361,7 +361,7 @@ const topics = [_]Topic{
     .{ .name = "version", .description = "Show wt version", .examples = &version_examples },
 };
 
-pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len != 0) {
         var message_buffer: [256]u8 = undefined;
         const message = try std.fmt.bufPrint(&message_buffer, "unknown command: {s}", .{args[0]});
@@ -384,7 +384,7 @@ pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stder
     return 0;
 }
 
-pub fn renderText(writer: anytype) !void {
+pub fn renderText(writer: *std.Io.Writer) !void {
     try writer.writeAll(
         \\wt examples
         \\
@@ -415,7 +415,7 @@ pub fn renderText(writer: anytype) !void {
     }
 }
 
-fn printListSection(writer: anytype, title: []const u8, values: []const []const u8) !void {
+fn printListSection(writer: *std.Io.Writer, title: []const u8, values: []const []const u8) !void {
     if (values.len == 0) return;
     try writer.print("      {s}:\n", .{title});
     for (values) |value| {
@@ -423,13 +423,13 @@ fn printListSection(writer: anytype, title: []const u8, values: []const []const 
     }
 }
 
-fn printOptionalField(writer: anytype, label: []const u8, value: ?[]const u8) !void {
+fn printOptionalField(writer: *std.Io.Writer, label: []const u8, value: ?[]const u8) !void {
     if (value) |present| {
         try writer.print("    {s}: {s}\n", .{ label, present });
     }
 }
 
-fn printOptionalBlock(writer: anytype, label: []const u8, value: ?[]const u8) !void {
+fn printOptionalBlock(writer: *std.Io.Writer, label: []const u8, value: ?[]const u8) !void {
     if (value) |present| {
         try writer.print("    {s}:\n", .{label});
         var lines = std.mem.splitScalar(u8, present, '\n');
@@ -445,20 +445,30 @@ test "examples rejects positional arguments" {
     var stderr_buffer = std.ArrayList(u8).empty;
     defer stderr_buffer.deinit(std.testing.allocator);
 
-    var stdout = stdout_buffer.writer(std.testing.allocator);
-    var stderr = stderr_buffer.writer(std.testing.allocator);
+    var stdout_al = stdout_buffer.writer(std.testing.allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(std.testing.allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
 
-    const exit_code = try run(&.{"create"}, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 1), exit_code);
+    const ctx = output.Context{ .allocator = std.testing.allocator, .format = .text };
+    const exit_code = try run(ctx, &.{"create"}, &stdout_adapted.new_interface, &stderr_adapted.new_interface);
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+    try std.testing.expectEqual(1, exit_code);
     try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "unknown command: create") != null);
 }
 
 test "examples text includes catalog topics and json note" {
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(std.testing.allocator);
-    var writer = buffer.writer(std.testing.allocator);
+    var al_writer = buffer.writer(std.testing.allocator);
+    var io_buf: [4096]u8 = undefined;
+    var adapted = al_writer.adaptToNewApi(&io_buf);
 
-    try renderText(&writer);
+    try renderText(&adapted.new_interface);
+    try adapted.new_interface.flush();
 
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "checkout: Checkout an existing branch in a worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "examples: Show detailed command examples and outcomes") != null);

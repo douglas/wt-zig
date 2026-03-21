@@ -8,8 +8,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len == 0) {
         try printRoot(ctx, cfg, stdout);
@@ -35,7 +35,7 @@ pub fn run(
     return 0;
 }
 
-pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: anytype) !void {
+pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(ctx.allocator);
     var buffered = buffer.writer(ctx.allocator);
@@ -89,7 +89,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: anyty
     try output.commandHelp(ctx, writer, "wt", buffer.items);
 }
 
-pub fn printCommand(ctx: output.Context, spec: *const command.Spec, writer: anytype) !void {
+pub fn printCommand(ctx: output.Context, spec: *const command.Spec, writer: *std.Io.Writer) !void {
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(ctx.allocator);
     var buffered = buffer.writer(ctx.allocator);

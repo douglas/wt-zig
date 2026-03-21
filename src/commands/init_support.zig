@@ -168,7 +168,7 @@ pub fn shellConfigContent(shell: Shell) []const u8 {
     };
 }
 
-pub fn printActivationGuidance(shell: Shell, config_path: []const u8, stdout: anytype) !void {
+pub fn printActivationGuidance(shell: Shell, config_path: []const u8, stdout: *std.Io.Writer) !void {
     try stdout.writeAll("\nTo activate, run:\n");
     switch (shell) {
         .bash, .zsh => try stdout.print("  source {s}\n", .{config_path}),

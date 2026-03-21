@@ -8,7 +8,7 @@ pub fn copyFiles(
     repo_name: []const u8,
     main_path: []const u8,
     worktree_path: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) void {
     copyPaths(allocator, cfg.copy_files.paths, main_path, worktree_path, stderr);
 
@@ -24,7 +24,7 @@ fn copyPaths(
     paths: []const []const u8,
     main_path: []const u8,
     worktree_path: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) void {
     for (paths) |relative_path| {
         copyOne(allocator, relative_path, main_path, worktree_path, stderr);
@@ -36,7 +36,7 @@ fn copyOne(
     relative_path: []const u8,
     main_path: []const u8,
     worktree_path: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) void {
     const source = std.fs.path.join(allocator, &.{ main_path, relative_path }) catch return;
     defer allocator.free(source);
@@ -121,7 +121,9 @@ test "copyFiles copies files from main to worktree" {
         },
     };
 
-    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &discard);
 
     // Verify files were copied
     const dest_env = try std.fs.path.join(allocator, &.{ wt_path, ".env" });
@@ -173,7 +175,9 @@ test "copyFiles skips missing source files silently" {
     };
 
     // Should not error — just silently skip
-    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &discard);
 }
 
 test "copyFiles applies repo-specific overrides" {
@@ -230,7 +234,9 @@ test "copyFiles applies repo-specific overrides" {
         },
     };
 
-    copyFiles(allocator, &cfg, "campaigns", main_path, wt_path, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    copyFiles(allocator, &cfg, "campaigns", main_path, wt_path, &discard);
 
     // Global .env should be copied
     const dest_env = try std.fs.path.join(allocator, &.{ wt_path, ".env" });

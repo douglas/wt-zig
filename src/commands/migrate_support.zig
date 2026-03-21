@@ -139,8 +139,8 @@ pub fn applyPlan(
     ctx: output.Context,
     force: bool,
     plan: []PlanItem,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     var results = std.ArrayList(ResultItem).empty;
@@ -323,7 +323,7 @@ fn movePrimaryCheckout(
     from: []const u8,
     to: []const u8,
     force: bool,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !void {
     try prepareMigrateTarget(allocator, to, force);
     try std.fs.renameAbsolute(from, to);
@@ -345,7 +345,7 @@ fn moveLinkedWorktree(
     from: []const u8,
     to: []const u8,
     force: bool,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !void {
     try prepareMigrateTarget(allocator, to, force);
 

@@ -21,8 +21,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
@@ -231,7 +231,7 @@ test "collectCandidates filters to merged non-base worktrees" {
     const candidates = try collectCandidates(allocator, &entries, &merged, "main");
     defer allocator.free(candidates);
 
-    try std.testing.expectEqual(@as(usize, 1), candidates.len);
+    try std.testing.expectEqual(1, candidates.len);
     try std.testing.expectEqualStrings("feat-a", candidates[0].branch.?);
     try std.testing.expectEqualStrings("/repo/.worktrees/feat-a", candidates[0].path);
 }

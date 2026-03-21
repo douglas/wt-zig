@@ -9,10 +9,14 @@ pub fn main() !void {
     const argv = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, argv);
 
-    var stdout = std.fs.File.stdout().deprecatedWriter();
-    var stderr = std.fs.File.stderr().deprecatedWriter();
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout = std.fs.File.stdout().writer(&stdout_buf);
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr = std.fs.File.stderr().writer(&stderr_buf);
 
-    const exit_code = try app.run(allocator, argv, &stdout, &stderr);
+    const exit_code = try app.run(allocator, argv, &stdout.interface, &stderr.interface);
+    stdout.interface.flush() catch {};
+    stderr.interface.flush() catch {};
     if (exit_code != 0) {
         std.process.exit(exit_code);
     }

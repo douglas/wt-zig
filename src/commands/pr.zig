@@ -9,8 +9,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     return runRemoteCommand(ctx, cfg, args, stdout, stderr, .github);
 }
@@ -19,8 +19,8 @@ pub fn runRemoteCommand(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
     remote_type: pr_git.RemoteType,
 ) !u8 {
     const allocator = ctx.allocator;

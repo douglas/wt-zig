@@ -18,8 +18,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
@@ -122,7 +122,7 @@ test "buildMigratePlan moves linked worktree into configured root" {
     const plan = try buildMigratePlan(allocator, &cfg, repo, &entries, &env, false);
     defer support.freePlan(allocator, plan);
 
-    try std.testing.expectEqual(@as(usize, 2), plan.len);
+    try std.testing.expectEqual(2, plan.len);
     try std.testing.expect(plan[0].primary);
     try std.testing.expectEqual(Action.skip, plan[0].action);
     try std.testing.expectEqual(Action.move, plan[1].action);

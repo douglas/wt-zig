@@ -10,8 +10,8 @@ const RemoveResult = support.RemoveResult;
 pub fn run(
     ctx: output.Context,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     const parsed = support.parseArgs(args) catch {
@@ -95,7 +95,7 @@ pub fn run(
     return 0;
 }
 
-fn writeCommandError(ctx: output.Context, stdout: anytype, stderr: anytype, message: []const u8) !void {
+fn writeCommandError(ctx: output.Context, stdout: *std.Io.Writer, stderr: *std.Io.Writer, message: []const u8) !void {
     if (output.isJson(ctx)) {
         try output.emitError(ctx, stdout, "wt init", message);
     } else {
@@ -238,11 +238,17 @@ test "run with no prompt suppresses activation guidance" {
     var stderr_buffer = std.ArrayList(u8).empty;
     defer stderr_buffer.deinit(allocator);
 
-    var stdout = stdout_buffer.writer(allocator);
-    var stderr = stderr_buffer.writer(allocator);
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
 
-    const exit_code = try run(.{ .allocator = allocator, .format = .text }, &.{ "--no-prompt", "--dry-run", "bash" }, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 0), exit_code);
+    const exit_code = try run(.{ .allocator = allocator, .format = .text }, &.{ "--no-prompt", "--dry-run", "bash" }, &stdout_adapted.new_interface, &stderr_adapted.new_interface);
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+    try std.testing.expectEqual(0, exit_code);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Would append to ") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "To activate, run:") == null);
 }
@@ -257,11 +263,17 @@ test "run rejects powershell on non-windows after parsing flags" {
     var stderr_buffer = std.ArrayList(u8).empty;
     defer stderr_buffer.deinit(allocator);
 
-    var stdout = stdout_buffer.writer(allocator);
-    var stderr = stderr_buffer.writer(allocator);
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
 
-    const exit_code = try run(.{ .allocator = allocator, .format = .text }, &.{ "powershell", "--dry-run" }, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 1), exit_code);
-    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    const exit_code = try run(.{ .allocator = allocator, .format = .text }, &.{ "powershell", "--dry-run" }, &stdout_adapted.new_interface, &stderr_adapted.new_interface);
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expectEqual(0, stdout_buffer.items.len);
     try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "PowerShell shell integration is only supported on Windows") != null);
 }

@@ -22,8 +22,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
@@ -120,7 +120,7 @@ pub fn removeWorktree(
     cfg: *const config.Resolved,
     branch: []const u8,
     force: bool,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !Outcome {
     var info = try git_repo.getRepoInfo(allocator);
     defer git_repo.freeRepoInfo(allocator, &info);
@@ -190,7 +190,7 @@ fn isSameOrChildPath(parent: []const u8, child: []const u8) bool {
     return parent[parent.len - 1] == std.fs.path.sep or child[parent.len] == std.fs.path.sep;
 }
 
-fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, force: bool, stderr: anytype) !bool {
+fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, force: bool, stderr: *std.Io.Writer) !bool {
     var args = std.ArrayList([]const u8).empty;
     defer args.deinit(allocator);
     try args.appendSlice(allocator, &.{ "git", "worktree", "remove" });

@@ -3,7 +3,7 @@ const config = @import("../config.zig");
 const output = @import("../output.zig");
 const path = @import("../path.zig");
 
-pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     _ = stderr;
 
     const config_status = if (cfg.config_file_found) "found" else "not found, using defaults";
@@ -111,7 +111,7 @@ fn hasHooks(hooks: config.Hooks) bool {
         hooks.post_mr.len != 0;
 }
 
-fn printHookGroup(name: []const u8, commands: []const []const u8, writer: anytype) !void {
+fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.Io.Writer) !void {
     for (commands) |command| {
         try writer.print("  {s}: {s}\n", .{ name, command });
     }

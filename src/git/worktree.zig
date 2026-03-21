@@ -21,7 +21,7 @@ pub const ListResult = struct {
     }
 };
 
-pub fn list(allocator: std.mem.Allocator, stderr: anytype) !ListResult {
+pub fn list(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !ListResult {
     const result = try proc.run(allocator, &.{ "git", "worktree", "list", "--porcelain" });
     errdefer allocator.free(result.stdout);
     errdefer allocator.free(result.stderr);
@@ -48,7 +48,7 @@ pub fn list(allocator: std.mem.Allocator, stderr: anytype) !ListResult {
     };
 }
 
-fn printGitFailure(stderr: anytype, git_stderr: []const u8, code: u8) !void {
+fn printGitFailure(stderr: *std.Io.Writer, git_stderr: []const u8, code: u8) !void {
     const trimmed = std.mem.trim(u8, git_stderr, " \r\n\t");
     if (trimmed.len == 0) {
         try stderr.print("git worktree list --porcelain failed with exit code {d}.\n", .{code});
@@ -155,7 +155,7 @@ test "parse porcelain captures branch and head" {
     const entries = try parsePorcelain(allocator, source);
     defer allocator.free(entries);
 
-    try std.testing.expectEqual(@as(usize, 2), entries.len);
+    try std.testing.expectEqual(2, entries.len);
     try std.testing.expectEqualStrings("/repo", entries[0].path);
     try std.testing.expectEqualStrings("main", entries[0].branch.?);
     try std.testing.expectEqualStrings("feature/login", entries[1].branch.?);

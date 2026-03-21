@@ -23,7 +23,7 @@ pub fn parseFormat(raw: []const u8) !Format {
 
 pub fn emitSuccess(
     ctx: Context,
-    stdout: anytype,
+    stdout: *std.Io.Writer,
     command: []const u8,
     data: anytype,
 ) !void {
@@ -37,7 +37,7 @@ pub fn emitSuccess(
     try stdout.writeAll("}\n");
 }
 
-pub fn emitError(ctx: Context, stdout: anytype, command: []const u8, message: []const u8) !void {
+pub fn emitError(ctx: Context, stdout: *std.Io.Writer, command: []const u8, message: []const u8) !void {
     if (!isJson(ctx)) return;
     try stdout.writeAll("{\"ok\":false,\"command\":");
     try writeQuoted(stdout, command);
@@ -46,7 +46,7 @@ pub fn emitError(ctx: Context, stdout: anytype, command: []const u8, message: []
     try stdout.writeAll("}\n");
 }
 
-pub fn usageError(ctx: Context, stdout: anytype, stderr: anytype, command: []const u8, message: []const u8) !u8 {
+pub fn usageError(ctx: Context, stdout: *std.Io.Writer, stderr: *std.Io.Writer, command: []const u8, message: []const u8) !u8 {
     if (isJson(ctx)) {
         try emitError(ctx, stdout, command, message);
     } else {
@@ -57,7 +57,7 @@ pub fn usageError(ctx: Context, stdout: anytype, stderr: anytype, command: []con
 
 pub fn commandHelp(
     ctx: Context,
-    stdout: anytype,
+    stdout: *std.Io.Writer,
     command: []const u8,
     help_text: []const u8,
 ) !void {
@@ -68,7 +68,7 @@ pub fn commandHelp(
     try emitSuccess(ctx, stdout, command, .{ .help = help_text });
 }
 
-fn writeQuoted(writer: anytype, value: []const u8) !void {
+fn writeQuoted(writer: *std.Io.Writer, value: []const u8) !void {
     try writer.writeByte('"');
     for (value) |ch| switch (ch) {
         '"' => try writer.writeAll("\\\""),
@@ -102,9 +102,12 @@ test "emitSuccess writes json envelope" {
 
     var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
-    var writer = buffer.writer(allocator);
+    var al_writer = buffer.writer(allocator);
+    var io_buf: [4096]u8 = undefined;
+    var adapted = al_writer.adaptToNewApi(&io_buf);
 
-    try emitSuccess(ctx, &writer, "wt version", .{ .version = "1.2.3" });
+    try emitSuccess(ctx, &adapted.new_interface, "wt version", .{ .version = "1.2.3" });
+    try adapted.new_interface.flush();
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"ok\":true") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"command\":\"wt version\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\"version\":\"1.2.3\"") != null);

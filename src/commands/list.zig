@@ -5,8 +5,8 @@ const worktree = @import("../git/worktree.zig");
 pub fn run(
     ctx: output.Context,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     if (args.len != 0) {
         return output.usageError(ctx, stdout, stderr, "wt list", "Usage: wt list");

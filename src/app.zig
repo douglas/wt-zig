@@ -23,8 +23,8 @@ const version_cmd = @import("commands/version.zig");
 pub fn run(
     allocator: std.mem.Allocator,
     argv: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const raw_args = if (argv.len > 1) argv[1..] else &.{};
     var parsed = parseRootArgs(allocator, raw_args) catch |err| {
@@ -161,7 +161,7 @@ test "parseRootArgs handles config flag and command" {
     var parsed = try parseRootArgs(std.testing.allocator, &.{ "--config", "/tmp/wt.toml", "config", "show" });
     defer parsed.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("/tmp/wt.toml", parsed.cli_config_path.?);
-    try std.testing.expectEqual(@as(usize, 2), parsed.positional.len);
+    try std.testing.expectEqual(2, parsed.positional.len);
     try std.testing.expectEqualStrings("config", parsed.positional[0]);
 }
 

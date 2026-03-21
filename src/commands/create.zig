@@ -12,8 +12,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     if (args.len == 0 or args.len > 2) {
@@ -94,7 +94,7 @@ fn runGitCreate(
     path: []const u8,
     branch: []const u8,
     base: []const u8,
-    stderr: anytype,
+    stderr: *std.Io.Writer,
 ) !bool {
     const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "add", path, "-b", branch, base });
     defer allocator.free(owned);

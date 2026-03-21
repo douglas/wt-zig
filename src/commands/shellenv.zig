@@ -2,7 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const output = @import("../output.zig");
 
-pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len != 0) {
         return output.usageError(ctx, stdout, stderr, "wt shellenv", "Usage: wt shellenv");
     }
@@ -219,15 +219,21 @@ test "shellenv includes json guard and completion blocks" {
     var stderr_buffer = std.ArrayList(u8).empty;
     defer stderr_buffer.deinit(allocator);
 
-    var stdout = stdout_buffer.writer(allocator);
-    var stderr = stderr_buffer.writer(allocator);
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
 
     const ctx = output.Context{
         .allocator = allocator,
         .format = .text,
     };
-    const exit_code = try run(ctx, &.{}, &stdout, &stderr);
-    try std.testing.expectEqual(@as(u8, 0), exit_code);
+    const exit_code = try run(ctx, &.{}, &stdout_adapted.new_interface, &stderr_adapted.new_interface);
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+    try std.testing.expectEqual(0, exit_code);
     if (builtin.os.tag == .windows) {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Register-ArgumentCompleter") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Set-Location $cdPath") != null);

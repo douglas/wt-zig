@@ -2,7 +2,7 @@ const std = @import("std");
 const build_options = @import("build_options");
 const output = @import("../output.zig");
 
-pub fn run(ctx: output.Context, args: []const []const u8, stdout: anytype, stderr: anytype) !u8 {
+pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len != 0) {
         return output.usageError(ctx, stdout, stderr, "wt version", "Usage: wt version");
     }

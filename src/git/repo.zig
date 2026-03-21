@@ -106,7 +106,9 @@ pub fn getAvailableBranches(allocator: std.mem.Allocator) ![][]u8 {
 }
 
 pub fn getExistingWorktreeBranches(allocator: std.mem.Allocator) ![][]u8 {
-    var result = try worktree.list(allocator, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    var result = try worktree.list(allocator, &discard);
     defer result.deinit(allocator);
 
     if (result.entries.len <= 1) return allocator.alloc([]u8, 0);
@@ -281,7 +283,9 @@ fn getMainWorktreePath(
     repo_name: []const u8,
     repo_root: []const u8,
 ) ![]const u8 {
-    var result = try worktree.list(allocator, std.io.null_writer);
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    var result = try worktree.list(allocator, &discard);
     defer result.deinit(allocator);
 
     if (result.entries.len > 0) {
@@ -350,9 +354,9 @@ test "parseRemoteURL handles https and scp forms" {
 }
 
 test "parseRemoteURL rejects invalid inputs" {
-    try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL(""));
-    try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL("https://github.com"));
-    try std.testing.expectEqual(@as(?ParsedRemote, null), parseRemoteURL("git@github.com:repo.git"));
+    try std.testing.expectEqual(null, parseRemoteURL(""));
+    try std.testing.expectEqual(null, parseRemoteURL("https://github.com"));
+    try std.testing.expectEqual(null, parseRemoteURL("git@github.com:repo.git"));
 }
 
 test "parseBranchLines filters base and empty lines" {
@@ -363,7 +367,7 @@ test "parseBranchLines filters base and empty lines" {
         allocator.free(branches);
     }
 
-    try std.testing.expectEqual(@as(usize, 2), branches.len);
+    try std.testing.expectEqual(2, branches.len);
     try std.testing.expectEqualStrings("feature/a", branches[0]);
     try std.testing.expectEqualStrings("feature/b", branches[1]);
 }
@@ -408,7 +412,7 @@ test "getAvailableBranches parsing strips remote prefixes and deduplicates" {
     }
 
     std.mem.sort([]u8, branches.items, {}, sortStringsAsc);
-    try std.testing.expectEqual(@as(usize, 3), branches.items.len);
+    try std.testing.expectEqual(3, branches.items.len);
     try std.testing.expectEqualStrings("feature/a", branches.items[0]);
     try std.testing.expectEqualStrings("feature/b", branches.items[1]);
     try std.testing.expectEqualStrings("main", branches.items[2]);

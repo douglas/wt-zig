@@ -5,8 +5,8 @@ const proc = @import("../process.zig");
 pub fn run(
     ctx: output.Context,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     const allocator = ctx.allocator;
     if (args.len != 0) {

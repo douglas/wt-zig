@@ -8,8 +8,8 @@ pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
     args: []const []const u8,
-    stdout: anytype,
-    stderr: anytype,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
 ) !u8 {
     return pr.runRemoteCommand(ctx, cfg, args, stdout, stderr, pr_git.RemoteType.gitlab);
 }
