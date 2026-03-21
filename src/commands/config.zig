@@ -28,7 +28,8 @@ pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Res
         if (output.isJson(ctx)) {
             try output.emitSuccess(ctx, stdout, "wt config path", .{ .path = cfg.config_file_path });
         } else {
-            try stdout.print("{s}\n", .{cfg.config_file_path});
+            try stdout.writeAll(cfg.config_file_path);
+            try stdout.writeByte('\n');
         }
         return 0;
     }

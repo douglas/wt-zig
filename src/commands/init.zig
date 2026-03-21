@@ -99,7 +99,8 @@ fn writeCommandError(ctx: output.Context, stdout: *std.Io.Writer, stderr: *std.I
     if (output.isJson(ctx)) {
         try output.emitError(ctx, stdout, "wt init", message);
     } else {
-        try stderr.print("{s}\n", .{message});
+        try stderr.writeAll(message);
+        try stderr.writeByte('\n');
     }
 }
 

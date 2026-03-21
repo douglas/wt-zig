@@ -12,7 +12,8 @@ pub fn selectItem(
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();
 
-    try stderr.print("{s}:\n", .{label});
+    try stderr.writeAll(label);
+    try stderr.writeAll(":\n");
     for (items, 0..) |item, index| {
         try stderr.print("  {d}) {s}\n", .{ index + 1, item });
     }
@@ -40,7 +41,8 @@ pub fn confirmPrompt(
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();
 
-    try stderr.print("{s} [y/N]: ", .{label});
+    try stderr.writeAll(label);
+    try stderr.writeAll(" [y/N]: ");
     const line = try readLine(allocator, tty.file);
     defer allocator.free(line);
     if (line.len == 0 or containsCancel(line)) return false;

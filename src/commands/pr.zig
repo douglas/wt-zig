@@ -146,11 +146,22 @@ pub fn runRemoteCommand(
                 resolved.branch, pr_git.label(remote_type), resolved.id,
             });
             defer allocator.free(message);
-            if (output.isJson(ctx)) try output.emitError(ctx, stdout, command_name, message) else try stderr.print("{s}\n", .{message});
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, command_name, message);
+            } else {
+                try stderr.writeAll(message);
+                try stderr.writeByte('\n');
+            }
             return 1;
         },
         error.HookCommandFailed => {
-            if (output.isJson(ctx)) try output.emitError(ctx, stdout, command_name, "pre hook failed") else try stderr.print("pre-{s} hook failed\n", .{pr_git.commandName(remote_type)});
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, command_name, "pre hook failed");
+            } else {
+                try stderr.writeAll("pre-");
+                try stderr.writeAll(pr_git.commandName(remote_type));
+                try stderr.writeAll(" hook failed\n");
+            }
             return 1;
         },
         error.GitCommandFailed => return 1,
@@ -171,18 +182,22 @@ pub fn runRemoteCommand(
     }
 
     if (outcome.existed) {
-        try stdout.print("Worktree already exists: {s}\n", .{outcome.path});
-        try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+        try stdout.writeAll("Worktree already exists: ");
+        try stdout.writeAll(outcome.path);
+        try stdout.writeByte('\n');
+        try output.emitNavigateTo(stdout, outcome.path);
         return 0;
     }
 
-    try stdout.print("{s} #{s} ({s}) checked out at: {s}\n", .{
-        pr_git.label(remote_type),
-        resolved.id,
-        resolved.branch,
-        outcome.path,
-    });
-    try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+    try stdout.writeAll(pr_git.label(remote_type));
+    try stdout.writeAll(" #");
+    try stdout.writeAll(resolved.id);
+    try stdout.writeAll(" (");
+    try stdout.writeAll(resolved.branch);
+    try stdout.writeAll(") checked out at: ");
+    try stdout.writeAll(outcome.path);
+    try stdout.writeByte('\n');
+    try output.emitNavigateTo(stdout, outcome.path);
     return 0;
 }
 

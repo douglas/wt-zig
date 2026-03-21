@@ -41,8 +41,10 @@ pub fn run(
                         .navigate_to = entry.path,
                     });
                 } else {
-                    try stdout.print("Worktree already exists: {s}\n", .{entry.path});
-                    try stdout.print("wt navigating to: {s}\n", .{entry.path});
+                    try stdout.writeAll("Worktree already exists: ");
+                    try stdout.writeAll(entry.path);
+                    try stdout.writeByte('\n');
+                    try output.emitNavigateTo(stdout, entry.path);
                 }
                 return 0;
             }
@@ -62,7 +64,9 @@ pub fn run(
         if (output.isJson(ctx)) {
             output.emitError(ctx, stdout, "wt create", "pre-create hook failed") catch {};
         } else {
-            stderr.print("pre-create hook failed: {s}\n", .{@errorName(err)}) catch {};
+            stderr.writeAll("pre-create hook failed: ") catch {};
+            stderr.writeAll(@errorName(err)) catch {};
+            stderr.writeByte('\n') catch {};
         }
         return 1;
     };
@@ -83,8 +87,10 @@ pub fn run(
             .navigate_to = target_path,
         });
     } else {
-        try stdout.print("Worktree created at: {s}\n", .{target_path});
-        try stdout.print("wt navigating to: {s}\n", .{target_path});
+        try stdout.writeAll("Worktree created at: ");
+        try stdout.writeAll(target_path);
+        try stdout.writeByte('\n');
+        try output.emitNavigateTo(stdout, target_path);
     }
     return 0;
 }

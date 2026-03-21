@@ -87,9 +87,11 @@ pub fn run(
             .navigate_to = outcome.navigate_to,
         });
     } else {
-        try stdout.print("Removed worktree: {s}\n", .{outcome.path});
+        try stdout.writeAll("Removed worktree: ");
+        try stdout.writeAll(outcome.path);
+        try stdout.writeByte('\n');
         if (outcome.navigate_to) |navigate_to| {
-            try stdout.print("wt navigating to: {s}\n", .{navigate_to});
+            try output.emitNavigateTo(stdout, navigate_to);
         }
     }
     return 0;

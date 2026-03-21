@@ -107,13 +107,17 @@ pub fn run(
     }
 
     if (outcome.existed) {
-        try stdout.print("Worktree already exists: {s}\n", .{outcome.path});
-        try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+        try stdout.writeAll("Worktree already exists: ");
+        try stdout.writeAll(outcome.path);
+        try stdout.writeByte('\n');
+        try output.emitNavigateTo(stdout, outcome.path);
         return 0;
     }
 
-    try stdout.print("Worktree created at: {s}\n", .{outcome.path});
-    try stdout.print("wt navigating to: {s}\n", .{outcome.path});
+    try stdout.writeAll("Worktree created at: ");
+    try stdout.writeAll(outcome.path);
+    try stdout.writeByte('\n');
+    try output.emitNavigateTo(stdout, outcome.path);
     return 0;
 }
 
@@ -239,7 +243,10 @@ fn runGitCommand(
     if (result.succeeded()) return true;
     const message = result.trimmedStderr();
     if (message.len != 0) {
-        try stderr.print("{s}: {s}\n", .{ failure_prefix, message });
+        try stderr.writeAll(failure_prefix);
+        try stderr.writeAll(": ");
+        try stderr.writeAll(message);
+        try stderr.writeByte('\n');
     }
     return false;
 }

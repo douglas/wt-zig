@@ -397,10 +397,18 @@ pub fn renderText(writer: *std.Io.Writer) !void {
     for (topics) |topic| {
         try writer.print("{s}: {s}\n", .{ topic.name, topic.description });
         for (topic.examples) |example| {
-            try writer.print("  {s}\n", .{example.command});
-            try writer.print("    purpose: {s}\n", .{example.purpose});
-            try writer.print("    => {s}\n", .{example.outcome});
-            try writer.print("    exit: {s}\n", .{example.exit_code});
+            try writer.writeAll("  ");
+            try writer.writeAll(example.command);
+            try writer.writeByte('\n');
+            try writer.writeAll("    purpose: ");
+            try writer.writeAll(example.purpose);
+            try writer.writeByte('\n');
+            try writer.writeAll("    => ");
+            try writer.writeAll(example.outcome);
+            try writer.writeByte('\n');
+            try writer.writeAll("    exit: ");
+            try writer.writeAll(example.exit_code);
+            try writer.writeByte('\n');
             try printListSection(writer, "preconditions", example.preconditions);
             try printOptionalField(writer, "path example", example.path_example);
             try printOptionalField(writer, "path basis", example.path_basis);
