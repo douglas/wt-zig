@@ -49,16 +49,24 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(b.getInstallStep());
     check_step.dependOn(&run_unit_tests.step);
 
+    const release_module = b.createModule(.{
+        .root_source_file = b.path("src/main.zig"),
+        .target = target,
+        .optimize = .ReleaseSmall,
+        .strip = true,
+        .single_threaded = true,
+        .unwind_tables = .none,
+        .omit_frame_pointer = true,
+        .error_tracing = false,
+        .stack_protector = false,
+        .stack_check = false,
+        .valgrind = false,
+    });
+    release_module.addOptions("build_options", options);
     const release_exe = b.addExecutable(.{
         .name = "wt",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
-            .target = target,
-            .optimize = .ReleaseSmall,
-        }),
+        .root_module = release_module,
     });
-    release_exe.root_module.addOptions("build_options", options);
-    release_exe.root_module.strip = true;
     const release_step = b.step("release", "Build release-optimized binary");
     release_step.dependOn(&b.addInstallArtifact(release_exe, .{}).step);
 
