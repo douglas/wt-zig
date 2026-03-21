@@ -49,6 +49,19 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(b.getInstallStep());
     check_step.dependOn(&run_unit_tests.step);
 
+    const release_exe = b.addExecutable(.{
+        .name = "wt",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = .ReleaseSmall,
+        }),
+    });
+    release_exe.root_module.addOptions("build_options", options);
+    release_exe.root_module.strip = true;
+    const release_step = b.step("release", "Build release-optimized binary");
+    release_step.dependOn(&b.addInstallArtifact(release_exe, .{}).step);
+
     const parity_cmd = b.addSystemCommand(&.{
         "/usr/bin/env",
         b.fmt("WT_ZIG_REPO={s}", .{b.pathFromRoot(".")}),

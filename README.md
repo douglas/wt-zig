@@ -72,6 +72,7 @@ zig build run -- version
 zig build run -- list
 zig build run -- config show
 zig build test
+zig build release          # stripped ReleaseSmall binary (~272 KB)
 zig build parity
 zig fmt --check .
 ./scripts/parity-harness.sh
