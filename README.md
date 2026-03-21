@@ -4,6 +4,7 @@
 
 The detailed phase history, verification patterns, and completion criteria live in [docs/port-status.md](docs/port-status.md).
 For a practical comparison of the Go and Zig implementations, see [docs/comparison.md](docs/comparison.md).
+For a broader Go vs Rust vs Zig language comparison grounded in real `wt` data, see [docs/language-comparison.md](docs/language-comparison.md).
 For the maintainer-facing architecture and code-quality rules, see [docs/architecture.md](docs/architecture.md).
 For a maintainer onboarding guide aimed at developers ramping from Ruby-style application work into this Zig codebase, see [docs/LEVELUP.md](docs/LEVELUP.md).
 
