@@ -200,10 +200,9 @@ fn runGitPrune(allocator: std.mem.Allocator) !void {
 }
 
 test "containsBranch matches existing branch names" {
-    const branches = [_][]u8{
-        @constCast("feat/a"),
-        @constCast("feat/b"),
-    };
+    var feat_a = "feat/a".*;
+    var feat_b = "feat/b".*;
+    const branches = [_][]u8{ &feat_a, &feat_b };
     try std.testing.expect(containsBranch(&branches, "feat/a"));
     try std.testing.expect(!containsBranch(&branches, "feat/c"));
 }
@@ -223,10 +222,9 @@ test "collectCandidates filters to merged non-base worktrees" {
         .{ .path = "/repo/.worktrees/feat-b", .branch = "feat-b" },
         .{ .path = "/repo/.worktrees/detached", .detached = true },
     };
-    const merged = [_][]u8{
-        @constCast("feat-a"),
-        @constCast("feat-c"),
-    };
+    var feat_a_str = "feat-a".*;
+    var feat_c_str = "feat-c".*;
+    const merged = [_][]u8{ &feat_a_str, &feat_c_str };
 
     const candidates = try collectCandidates(allocator, &entries, &merged, "main");
     defer allocator.free(candidates);

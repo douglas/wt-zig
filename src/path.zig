@@ -202,21 +202,8 @@ fn transformValue(allocator: std.mem.Allocator, value: []const u8, separator: []
 }
 
 test "resolvePattern covers default strategies" {
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "parent-dotdir",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{},
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
-    };
+    var cfg = config.testing_defaults;
+    cfg.strategy = "parent-dotdir";
 
     const info = try resolvePattern(&cfg);
     try std.testing.expectEqualStrings("{.repo.Main}/../.worktrees/{.branch}", info.pattern);
@@ -224,21 +211,8 @@ test "resolvePattern covers default strategies" {
 }
 
 test "resolvePattern rejects custom without explicit pattern" {
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "custom",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{},
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
-    };
+    var cfg = config.testing_defaults;
+    cfg.strategy = "custom";
 
     try std.testing.expectError(error.MissingCustomPattern, resolvePattern(&cfg));
 }
@@ -249,20 +223,15 @@ test "renderWorktreePath applies separator and env substitution" {
     defer env.deinit();
     try env.put("FEATURE", "team/alpha");
 
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "custom",
-        .pattern = "{.worktreeRoot}/{.env.FEATURE}/{.repo.Name}/{.branch}",
-        .separator = "-",
-        .hooks = .{},
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "config file",
-            .separator = "config file",
-        },
+    var cfg = config.testing_defaults;
+    cfg.strategy = "custom";
+    cfg.pattern = "{.worktreeRoot}/{.env.FEATURE}/{.repo.Name}/{.branch}";
+    cfg.separator = "-";
+    cfg.sources = .{
+        .root = "default",
+        .strategy = "default",
+        .pattern = "config file",
+        .separator = "config file",
     };
     const repo = RepoInfo{
         .main = "/tmp/repo",
@@ -280,20 +249,15 @@ test "renderWorktreePath preserves path-valued fields" {
     var env = std.process.EnvMap.init(allocator);
     defer env.deinit();
 
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "custom",
-        .pattern = "{.repo.Main}/../{.repo.Name}-{.branch}",
-        .separator = "-",
-        .hooks = .{},
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "config file",
-            .separator = "config file",
-        },
+    var cfg = config.testing_defaults;
+    cfg.strategy = "custom";
+    cfg.pattern = "{.repo.Main}/../{.repo.Name}-{.branch}";
+    cfg.separator = "-";
+    cfg.sources = .{
+        .root = "default",
+        .strategy = "default",
+        .pattern = "config file",
+        .separator = "config file",
     };
     const repo = RepoInfo{
         .main = "/tmp/src/repo",

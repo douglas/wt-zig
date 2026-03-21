@@ -102,24 +102,8 @@ test "copyFiles copies files from main to worktree" {
     defer allocator.free(local_yml_path);
     try writeTestFile(local_yml_path, "key: value");
 
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "global",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{},
-        .copy_files = .{
-            .paths = &.{ ".env", "config/local.yml" },
-        },
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
-    };
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{ .paths = &.{ ".env", "config/local.yml" } };
 
     var discard_buf: [4096]u8 = undefined;
     var discard = std.Io.Writer.fixed(&discard_buf);
@@ -155,24 +139,8 @@ test "copyFiles skips missing source files silently" {
     try std.fs.makeDirAbsolute(main_path);
     try std.fs.makeDirAbsolute(wt_path);
 
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "global",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{},
-        .copy_files = .{
-            .paths = &.{ ".env", "missing.txt" },
-        },
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
-    };
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{ .paths = &.{ ".env", "missing.txt" } };
 
     // Should not error — just silently skip
     var discard_buf: [4096]u8 = undefined;
@@ -214,24 +182,10 @@ test "copyFiles applies repo-specific overrides" {
         .{ .repo_name = "other-repo", .paths = &.{"other.txt"} },
     };
 
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "global",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{},
-        .copy_files = .{
-            .paths = &.{".env"},
-            .repo_overrides = &overrides,
-        },
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{
+        .paths = &.{".env"},
+        .repo_overrides = &overrides,
     };
 
     var discard_buf: [4096]u8 = undefined;

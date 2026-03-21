@@ -10,6 +10,7 @@ pub const Sources = types.Sources;
 pub const Resolved = types.Resolved;
 pub const LoadResult = types.LoadResult;
 pub const Options = types.Options;
+pub const testing_defaults = types.testing_defaults;
 pub const ParsedFile = support.ParsedFile;
 pub const default_config_template = support.default_config_template;
 pub const resolveConfigPath = support.resolveConfigPath;

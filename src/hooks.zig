@@ -113,21 +113,8 @@ fn runHookCommand(
 }
 
 test "getHooks returns configured slice" {
-    const cfg = config.Resolved{
-        .root = "/tmp/worktrees",
-        .strategy = "global",
-        .pattern = "",
-        .separator = "/",
-        .hooks = .{ .pre_create = &.{"echo pre"} },
-        .config_file_path = "/tmp/config.toml",
-        .config_file_found = false,
-        .sources = .{
-            .root = "default",
-            .strategy = "default",
-            .pattern = "default",
-            .separator = "default",
-        },
-    };
+    var cfg = config.testing_defaults;
+    cfg.hooks = .{ .pre_create = &.{"echo pre"} };
 
     try std.testing.expectEqual(1, getHooks(&cfg, "pre_create").len);
     try std.testing.expectEqual(0, getHooks(&cfg, "missing").len);

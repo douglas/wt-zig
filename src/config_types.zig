@@ -55,3 +55,19 @@ pub const Options = struct {
     cli_config_path: ?[]const u8 = null,
     env_map: ?*const std.process.EnvMap = null,
 };
+
+pub const testing_defaults = Resolved{
+    .root = "/tmp/worktrees",
+    .strategy = "global",
+    .pattern = "",
+    .separator = "/",
+    .hooks = .{},
+    .config_file_path = "/tmp/config.toml",
+    .config_file_found = false,
+    .sources = .{
+        .root = "default",
+        .strategy = "default",
+        .pattern = "default",
+        .separator = "default",
+    },
+};
