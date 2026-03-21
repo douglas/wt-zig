@@ -175,7 +175,7 @@ test "parseFile reads scalar settings and hooks" {
     try std.testing.expectEqualStrings("~/worktrees", parsed.root.?);
     try std.testing.expectEqualStrings("SIBLING-REPO", parsed.strategy.?);
     try std.testing.expectEqualStrings("-", parsed.separator.?);
-    try std.testing.expectEqual(@as(usize, 2), parsed.hooks.post_create.len);
+    try std.testing.expectEqual(2, parsed.hooks.post_create.len);
     try std.testing.expectEqualStrings("cleanup", parsed.hooks.pre_remove[0]);
 }
 
@@ -207,19 +207,19 @@ test "parseFile reads copy_files with global and per-repo paths" {
     var parsed = try parseFile(allocator, config_path);
     defer parsed.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.paths.len);
+    try std.testing.expectEqual(2, parsed.copy_files.paths.len);
     try std.testing.expectEqualStrings(".env", parsed.copy_files.paths[0]);
     try std.testing.expectEqualStrings("config/local.yml", parsed.copy_files.paths[1]);
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.repo_overrides.len);
+    try std.testing.expectEqual(2, parsed.copy_files.repo_overrides.len);
 
     try std.testing.expectEqualStrings("campaigns", parsed.copy_files.repo_overrides[0].repo_name);
-    try std.testing.expectEqual(@as(usize, 2), parsed.copy_files.repo_overrides[0].paths.len);
+    try std.testing.expectEqual(2, parsed.copy_files.repo_overrides[0].paths.len);
     try std.testing.expectEqualStrings(".env.local", parsed.copy_files.repo_overrides[0].paths[0]);
     try std.testing.expectEqualStrings(".env.test.local", parsed.copy_files.repo_overrides[0].paths[1]);
 
     try std.testing.expectEqualStrings("other-repo", parsed.copy_files.repo_overrides[1].repo_name);
-    try std.testing.expectEqual(@as(usize, 1), parsed.copy_files.repo_overrides[1].paths.len);
+    try std.testing.expectEqual(1, parsed.copy_files.repo_overrides[1].paths.len);
     try std.testing.expectEqualStrings("secrets.yml", parsed.copy_files.repo_overrides[1].paths[0]);
 }
 

@@ -161,10 +161,15 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
 
         const string_value = try parseStringValue(allocator, value);
         if (current_section == null) {
-            if (std.mem.eql(u8, key, "root")) parsed.root = string_value;
-            if (std.mem.eql(u8, key, "strategy")) parsed.strategy = string_value;
-            if (std.mem.eql(u8, key, "pattern")) parsed.pattern = string_value;
-            if (std.mem.eql(u8, key, "separator")) parsed.separator = string_value;
+            if (std.mem.eql(u8, key, "root")) {
+                parsed.root = string_value;
+            } else if (std.mem.eql(u8, key, "strategy")) {
+                parsed.strategy = string_value;
+            } else if (std.mem.eql(u8, key, "pattern")) {
+                parsed.pattern = string_value;
+            } else if (std.mem.eql(u8, key, "separator")) {
+                parsed.separator = string_value;
+            }
         }
     }
 
@@ -203,17 +208,13 @@ fn parseStringArray(allocator: std.mem.Allocator, raw: []const u8) ![]const []co
     return items.toOwnedSlice(allocator);
 }
 
-fn setHookField(hooks: *Hooks, key: []const u8, value: []const []const u8) void {
-    if (std.mem.eql(u8, key, "pre_create")) hooks.pre_create = value;
-    if (std.mem.eql(u8, key, "post_create")) hooks.post_create = value;
-    if (std.mem.eql(u8, key, "pre_checkout")) hooks.pre_checkout = value;
-    if (std.mem.eql(u8, key, "post_checkout")) hooks.post_checkout = value;
-    if (std.mem.eql(u8, key, "pre_remove")) hooks.pre_remove = value;
-    if (std.mem.eql(u8, key, "post_remove")) hooks.post_remove = value;
-    if (std.mem.eql(u8, key, "pre_pr")) hooks.pre_pr = value;
-    if (std.mem.eql(u8, key, "post_pr")) hooks.post_pr = value;
-    if (std.mem.eql(u8, key, "pre_mr")) hooks.pre_mr = value;
-    if (std.mem.eql(u8, key, "post_mr")) hooks.post_mr = value;
+fn setHookField(h: *Hooks, key: []const u8, value: []const []const u8) void {
+    inline for (comptime std.meta.fields(Hooks)) |field| {
+        if (std.mem.eql(u8, key, field.name)) {
+            @field(h, field.name) = value;
+            return;
+        }
+    }
 }
 
 fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void {
