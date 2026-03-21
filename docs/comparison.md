@@ -31,7 +31,7 @@ The Zig version is a native port with the same practical feature set, but it use
 
 - Broader distribution story. The Go repo already documents Homebrew, Scoop, WinGet, Linux packages, and `go install`.
 - More familiar stack for most contributors. Go, Cobra, and common Go CLI tooling are easier to approach for a wider group of developers.
-- Smaller default binary. The Go build is about `6.6M`; the Zig debug build is about `17M` (though `zig build release` produces a ~272 KB stripped binary).
+- Smaller default binary. The Go build is about `6.9M`; the Zig debug build is about `18M` (though `zig build release` produces a ~251 KB stripped binary).
 - Better choice if one implementation needs to remain the canonical external reference.
 
 ## What Is Better In Zig
