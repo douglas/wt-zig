@@ -31,7 +31,7 @@ The Zig version is a native port with the same practical feature set, but it use
 
 - Broader distribution story. The Go repo already documents Homebrew, Scoop, WinGet, Linux packages, and `go install`.
 - More familiar stack for most contributors. Go, Cobra, and common Go CLI tooling are easier to approach for a wider group of developers.
-- Smaller binary. The Go build is about `6.6M`, while the Zig build is about `17M`.
+- Smaller default binary. The Go build is about `6.6M`; the Zig debug build is about `17M` (though `zig build release` produces a ~272 KB stripped binary).
 - Better choice if one implementation needs to remain the canonical external reference.
 
 ## What Is Better In Zig
@@ -50,6 +50,8 @@ The later maintenance passes made that Zig advantage more concrete:
 - output behavior now flows through an explicit runtime context instead of mutable global state
 - process execution now has a single shared wrapper in `src/process.zig`
 - larger command implementations were split into support modules instead of continuing to grow inline
+- all I/O uses concrete `*std.Io.Writer` instead of comptime-generic `anytype`, eliminating monomorphization bloat
+- hook dispatch uses `inline for` + `@field` over `std.meta.fields`, so new hooks only need a struct field
 - maintainer-facing docs now include both [architecture.md](architecture.md) and [LEVELUP.md](LEVELUP.md)
 
 That means `wt-zig` is no longer just "the port in Zig". It is also the codebase with the more intentional internal maintenance story.
@@ -105,7 +107,7 @@ Go drawbacks:
 
 Zig drawbacks:
 
-- larger binary in the current local build
+- larger debug binary than Go (though `zig build release` produces a much smaller stripped binary)
 - smaller contributor pool
 - more stdlib/toolchain sharp edges, especially in Zig `0.15.2`
 - practical parity does not mean byte-for-byte identical output in every edge case

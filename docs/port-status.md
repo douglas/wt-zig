@@ -215,6 +215,9 @@ Standard checks:
 zig fmt --check build.zig build.zig.zon src/*.zig src/commands/*.zig src/git/*.zig
 zig build
 zig build test
+zig build check
+zig build parity
+zig build release          # stripped ReleaseSmall binary (~272 KB)
 ```
 
 In the Codex sandbox, Zig needs explicit cache locations:

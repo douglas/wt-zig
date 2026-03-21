@@ -5,6 +5,14 @@
 ### Added
 
 - `[copy_files]` config section — automatically copy files from the main worktree into new worktrees (e.g. `.env`, `config/local.yml`), with per-repo overrides via `[copy_files.<repo-name>]` subsections
+- `zig build release` step — produces a stripped ReleaseSmall binary (~272 KB)
+
+### Changed
+
+- All I/O now uses concrete `*std.Io.Writer` instead of comptime-generic `anytype`, eliminating monomorphization and reducing binary size
+- Hook dispatch (`getHooks`, `setHookField`) uses `inline for` + `@field` over `std.meta.fields` — adding a hook now only requires a new field in the `Hooks` struct
+- Scalar config key matching uses else-if chain for early exit
+- Removed unnecessary `@as` casts in test assertions (Zig 0.15 `expectEqual` accepts `comptime_int` directly)
 
 ## 0.1.0 — 2026-03-20
 

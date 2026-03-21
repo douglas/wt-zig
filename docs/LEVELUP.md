@@ -301,6 +301,7 @@ zig build
 zig build test
 zig build check
 zig build parity
+zig build release          # stripped ReleaseSmall binary (~272 KB)
 ```
 
 In the Codex sandbox, use the explicit cache dirs already documented in the repo:
