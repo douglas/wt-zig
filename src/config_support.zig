@@ -60,9 +60,11 @@ pub const default_config_template =
     \\# separator = "/"
     \\
     \\[hooks]
-    \\# post_create = ["test -f $WT_MAIN/.env && cp $WT_MAIN/.env $WT_PATH/.env || true"]
-    \\# post_checkout = ["cd $WT_PATH && npm install"]
-    \\# pre_remove = ["echo Removing $WT_PATH"]
+    \\# Commands run via "sh -c" with WT_* environment variables.
+    \\# Always quote variables in hooks: "$WT_PATH" not $WT_PATH
+    \\# post_create = ["test -f \"$WT_MAIN\"/.env && cp \"$WT_MAIN\"/.env \"$WT_PATH\"/.env || true"]
+    \\# post_checkout = ["cd \"$WT_PATH\" && npm install"]
+    \\# pre_remove = ["echo Removing \"$WT_PATH\""]
     \\
     \\[copy_files]
     \\# Files to copy from the main worktree into each new worktree.
@@ -94,7 +96,17 @@ pub fn resolveConfigPath(
 
 pub fn writeDefaultConfig(allocator: std.mem.Allocator, path: []const u8, force: bool) !void {
     if (fs.fileExists(path) and !force) return error.ConfigFileAlreadyExists;
-    try fs.writeFile(allocator, path, default_config_template);
+    try fs.ensureParentDir(allocator, path);
+    // Security: write config with restrictive permissions (0o600) to protect sensitive data
+    if (std.fs.path.isAbsolute(path)) {
+        const file = try std.fs.createFileAbsolute(path, .{ .truncate = true, .mode = 0o600 });
+        defer file.close();
+        try file.writeAll(default_config_template);
+    } else {
+        const file = try std.fs.cwd().createFile(path, .{ .truncate = true, .mode = 0o600 });
+        defer file.close();
+        try file.writeAll(default_config_template);
+    }
 }
 
 pub fn configDir(allocator: std.mem.Allocator, env_map: *const std.process.EnvMap) ![]const u8 {

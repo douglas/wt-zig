@@ -51,7 +51,7 @@ pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
         },
     };
 
-    if (fs.fileExists(config_path)) {
+    if (fs.fileExists(config_path) and isRegularFile(config_path)) {
         resolved.config_file_found = true;
         const parsed = try support.parseFile(arena_allocator, config_path);
         try applyParsedFile(arena_allocator, &resolved, parsed, home);
@@ -113,6 +113,13 @@ fn applyEnvOverrides(
         resolved.separator = try allocator.dupe(u8, value);
         resolved.sources.separator = "env: WORKTREE_SEPARATOR";
     }
+}
+
+/// Security: verify the config file is a regular file to prevent hangs on FIFOs,
+/// device nodes, or other special files (e.g., --config /dev/stdin).
+fn isRegularFile(path: []const u8) bool {
+    const stat = std.fs.cwd().statFile(path) catch return false;
+    return stat.kind == .file;
 }
 
 fn expandHome(allocator: std.mem.Allocator, path: []const u8, home: []const u8) ![]const u8 {

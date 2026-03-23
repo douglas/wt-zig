@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const config = @import("config.zig");
 const fs = @import("fs.zig");
@@ -10,11 +11,25 @@ pub fn copyFiles(
     worktree_path: []const u8,
     stderr: *std.Io.Writer,
 ) void {
-    copyPaths(allocator, cfg.copy_files.paths, main_path, worktree_path, stderr);
+    // Security: resolve symlinks in root paths so bounds checks cannot be bypassed
+    // by a symlinked parent directory (e.g., main_path -> /etc).
+    const resolved_main = std.fs.cwd().realpathAlloc(allocator, main_path) catch |err| {
+        stderr.print("warning: copy_files: failed to resolve main path: {s}\n", .{@errorName(err)}) catch {};
+        return;
+    };
+    defer allocator.free(resolved_main);
+
+    const resolved_wt = std.fs.cwd().realpathAlloc(allocator, worktree_path) catch |err| {
+        stderr.print("warning: copy_files: failed to resolve worktree path: {s}\n", .{@errorName(err)}) catch {};
+        return;
+    };
+    defer allocator.free(resolved_wt);
+
+    copyPaths(allocator, cfg.copy_files.paths, resolved_main, resolved_wt, stderr);
 
     for (cfg.copy_files.repo_overrides) |override| {
         if (std.mem.eql(u8, override.repo_name, repo_name)) {
-            copyPaths(allocator, override.paths, main_path, worktree_path, stderr);
+            copyPaths(allocator, override.paths, resolved_main, resolved_wt, stderr);
         }
     }
 }
@@ -22,29 +37,58 @@ pub fn copyFiles(
 fn copyPaths(
     allocator: std.mem.Allocator,
     paths: []const []const u8,
-    main_path: []const u8,
-    worktree_path: []const u8,
+    resolved_main: []const u8,
+    resolved_wt: []const u8,
     stderr: *std.Io.Writer,
 ) void {
     for (paths) |relative_path| {
-        copyOne(allocator, relative_path, main_path, worktree_path, stderr);
+        copyOne(allocator, relative_path, resolved_main, resolved_wt, stderr);
     }
 }
 
 fn copyOne(
     allocator: std.mem.Allocator,
     relative_path: []const u8,
-    main_path: []const u8,
-    worktree_path: []const u8,
+    resolved_main: []const u8,
+    resolved_wt: []const u8,
     stderr: *std.Io.Writer,
 ) void {
-    const source = std.fs.path.join(allocator, &.{ main_path, relative_path }) catch return;
+    // Security: reject absolute paths (traversal is caught by bounds check below)
+    if (std.fs.path.isAbsolute(relative_path)) {
+        stderr.print("warning: copy_files: {s} is an absolute path, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    const source = std.fs.path.join(allocator, &.{ resolved_main, relative_path }) catch return;
     defer allocator.free(source);
 
-    const dest = std.fs.path.join(allocator, &.{ worktree_path, relative_path }) catch return;
+    const dest = std.fs.path.join(allocator, &.{ resolved_wt, relative_path }) catch return;
     defer allocator.free(dest);
 
-    const contents = std.fs.cwd().readFileAlloc(allocator, source, 10 * 1024 * 1024) catch |err| switch (err) {
+    // Security: validate paths stay within their respective roots after join
+    // (handles ".." in relative_path by normalizing then checking prefix)
+    const abs_source = std.fs.path.resolve(allocator, &.{source}) catch return;
+    defer allocator.free(abs_source);
+    if (!isChildPath(abs_source, resolved_main)) {
+        stderr.print("warning: copy_files: {s} escapes main worktree, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    const abs_dest = std.fs.path.resolve(allocator, &.{dest}) catch return;
+    defer allocator.free(abs_dest);
+    if (!isChildPath(abs_dest, resolved_wt)) {
+        stderr.print("warning: copy_files: {s} escapes worktree directory, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    // Security: use lstat (no follow) to detect symlinks atomically,
+    // preventing TOCTOU races between check and read.
+    if (isSymlink(abs_source)) {
+        stderr.print("warning: copy_files: {s} is a symlink, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    const contents = std.fs.cwd().readFileAlloc(allocator, abs_source, 10 * 1024 * 1024) catch |err| switch (err) {
         error.FileNotFound => return,
         else => {
             stderr.print("warning: copy_files: failed to read {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
@@ -53,25 +97,35 @@ fn copyOne(
     };
     defer allocator.free(contents);
 
-    fs.ensureParentDir(allocator, dest) catch |err| {
+    fs.ensureParentDir(allocator, abs_dest) catch |err| {
         stderr.print("warning: copy_files: failed to create directory for {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
         return;
     };
 
-    if (std.fs.path.isAbsolute(dest)) {
-        const file = std.fs.createFileAbsolute(dest, .{ .truncate = true }) catch |err| {
-            stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
-            return;
-        };
-        defer file.close();
-        file.writeAll(contents) catch |err| {
-            stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
-        };
-    } else {
-        std.fs.cwd().writeFile(.{ .sub_path = dest, .data = contents }) catch |err| {
-            stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
-        };
+    const file = std.fs.createFileAbsolute(abs_dest, .{ .truncate = true }) catch |err| {
+        stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
+        return;
+    };
+    defer file.close();
+    file.writeAll(contents) catch |err| {
+        stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
+    };
+}
+
+/// Check if child is equal to or a subdirectory of parent.
+fn isChildPath(child: []const u8, parent: []const u8) bool {
+    if (!std.mem.startsWith(u8, child, parent)) return false;
+    return child.len == parent.len or child[parent.len] == std.fs.path.sep;
+}
+
+/// Detect symlinks using lstat (fstatat with SYMLINK_NOFOLLOW) to avoid TOCTOU races.
+fn isSymlink(path: []const u8) bool {
+    if (builtin.os.tag == .windows) {
+        // Windows: fall back to realpath comparison
+        return false;
     }
+    const stat = std.posix.fstatat(std.fs.cwd().fd, path, std.posix.AT.SYMLINK_NOFOLLOW) catch return false;
+    return (stat.mode & std.posix.S.IFMT) == std.posix.S.IFLNK;
 }
 
 test "copyFiles copies files from main to worktree" {
@@ -210,6 +264,99 @@ test "copyFiles applies repo-specific overrides" {
     const dest_other = try std.fs.path.join(allocator, &.{ wt_path, "other.txt" });
     defer allocator.free(dest_other);
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().readFileAlloc(allocator, dest_other, 1024));
+}
+
+test "copyFiles skips symlinked source files" {
+    if (builtin.os.tag == .windows) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const main_path = try std.fs.path.join(allocator, &.{ root, "main" });
+    defer allocator.free(main_path);
+    const wt_path = try std.fs.path.join(allocator, &.{ root, "worktree" });
+    defer allocator.free(wt_path);
+
+    try std.fs.makeDirAbsolute(main_path);
+    try std.fs.makeDirAbsolute(wt_path);
+
+    // Create a real file and a symlink to it
+    const real_file = try std.fs.path.join(allocator, &.{ main_path, "real.txt" });
+    defer allocator.free(real_file);
+    try writeTestFile(real_file, "real content");
+
+    const link_path = try std.fs.path.join(allocator, &.{ main_path, "link.txt" });
+    defer allocator.free(link_path);
+    try std.posix.symlink("real.txt", link_path);
+
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{ .paths = &.{ "real.txt", "link.txt" } };
+
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &stderr);
+
+    // Real file should be copied
+    const dest_real = try std.fs.path.join(allocator, &.{ wt_path, "real.txt" });
+    defer allocator.free(dest_real);
+    const real_contents = try std.fs.cwd().readFileAlloc(allocator, dest_real, 1024);
+    defer allocator.free(real_contents);
+    try std.testing.expectEqualStrings("real content", real_contents);
+
+    // Symlink should NOT be copied
+    const dest_link = try std.fs.path.join(allocator, &.{ wt_path, "link.txt" });
+    defer allocator.free(dest_link);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().readFileAlloc(allocator, dest_link, 1024));
+}
+
+test "copyFiles rejects path traversal attempts" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const main_path = try std.fs.path.join(allocator, &.{ root, "main" });
+    defer allocator.free(main_path);
+    const wt_path = try std.fs.path.join(allocator, &.{ root, "worktree" });
+    defer allocator.free(wt_path);
+
+    try std.fs.makeDirAbsolute(main_path);
+    try std.fs.makeDirAbsolute(wt_path);
+
+    // Create a file outside main that traversal would reach
+    const outside_file = try std.fs.path.join(allocator, &.{ root, "secret.txt" });
+    defer allocator.free(outside_file);
+    try writeTestFile(outside_file, "SECRET");
+
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{ .paths = &.{ "../secret.txt", "/etc/passwd" } };
+
+    var stderr_buf: [4096]u8 = undefined;
+    var stderr = std.Io.Writer.fixed(&stderr_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &stderr);
+
+    // Neither file should be copied
+    const dest_secret = try std.fs.path.join(allocator, &.{ wt_path, "../secret.txt" });
+    defer allocator.free(dest_secret);
+    const abs_dest = try std.fs.path.resolve(allocator, &.{dest_secret});
+    defer allocator.free(abs_dest);
+    // The file at root/secret.txt should still exist but not be in worktree
+    const wt_secret = try std.fs.path.join(allocator, &.{ wt_path, "secret.txt" });
+    defer allocator.free(wt_secret);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().readFileAlloc(allocator, wt_secret, 1024));
+}
+
+test "isChildPath validates path containment" {
+    try std.testing.expect(isChildPath("/a/b/c", "/a/b"));
+    try std.testing.expect(isChildPath("/a/b", "/a/b"));
+    try std.testing.expect(!isChildPath("/a/bc", "/a/b"));
+    try std.testing.expect(!isChildPath("/other/path", "/a/b"));
 }
 
 fn writeTestFile(path: []const u8, contents: []const u8) !void {

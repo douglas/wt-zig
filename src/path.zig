@@ -125,16 +125,20 @@ pub fn buildWorktreePath(
 pub fn cleanupWorktreePath(allocator: std.mem.Allocator, cfg: *const config.Resolved, worktree_path: []const u8) !void {
     if (worktree_path.len == 0) return;
 
-    std.fs.deleteTreeAbsolute(worktree_path) catch |err| switch (err) {
-        error.FileNotFound => {},
-        else => return err,
-    };
-
+    // Security: validate the path is within root BEFORE deleting to prevent
+    // arbitrary directory deletion if worktree_path is outside the root.
     const abs_root = try std.fs.path.resolve(allocator, &.{cfg.root});
     defer allocator.free(abs_root);
 
     const abs_worktree = try std.fs.path.resolve(allocator, &.{worktree_path});
     defer allocator.free(abs_worktree);
+
+    if (!isWithinRoot(abs_root, abs_worktree)) return;
+
+    std.fs.deleteTreeAbsolute(worktree_path) catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
 
     const parent = std.fs.path.dirname(abs_worktree) orelse return;
     if (!isWithinRoot(abs_root, parent)) return;

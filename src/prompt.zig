@@ -12,10 +12,16 @@ pub fn selectItem(
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();
 
-    try stderr.writeAll(label);
+    // Security: sanitize untrusted strings to prevent terminal manipulation
+    // via ANSI escape sequences in branch names or labels.
+    const safe_label = sanitizeForTerminal(allocator, label) catch label;
+    defer if (safe_label.ptr != label.ptr) allocator.free(safe_label);
+    try stderr.writeAll(safe_label);
     try stderr.writeAll(":\n");
     for (items, 0..) |item, index| {
-        try stderr.print("  {d}) {s}\n", .{ index + 1, item });
+        const safe_item = sanitizeForTerminal(allocator, item) catch item;
+        defer if (safe_item.ptr != item.ptr) allocator.free(safe_item);
+        try stderr.print("  {d}) {s}\n", .{ index + 1, safe_item });
     }
     try stderr.print("Enter number [1-{d}]: ", .{items.len});
 
@@ -41,13 +47,34 @@ pub fn confirmPrompt(
     var tty = try openTty();
     defer if (tty.close_on_exit) tty.file.close();
 
-    try stderr.writeAll(label);
+    const safe_label = sanitizeForTerminal(allocator, label) catch label;
+    defer if (safe_label.ptr != label.ptr) allocator.free(safe_label);
+    try stderr.writeAll(safe_label);
     try stderr.writeAll(" [y/N]: ");
     const line = try readLine(allocator, tty.file);
     defer allocator.free(line);
     if (line.len == 0 or containsCancel(line)) return false;
 
     return line[0] == 'y' or line[0] == 'Y';
+}
+
+/// Strip control characters (ASCII < 32 and DEL 127) from a string to prevent
+/// terminal manipulation via ANSI escape sequences in untrusted input like
+/// branch names or PR titles.
+fn sanitizeForTerminal(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
+    // Fast path: if no control characters, return the original slice
+    for (input) |ch| {
+        if (ch < 32 or ch == 127) break;
+    } else return input;
+
+    var result = std.ArrayList(u8).empty;
+    errdefer result.deinit(allocator);
+    for (input) |ch| {
+        if (ch >= 32 and ch != 127) {
+            try result.append(allocator, ch);
+        }
+    }
+    return result.toOwnedSlice(allocator);
 }
 
 const TtyHandle = struct {
@@ -144,6 +171,28 @@ fn useStdinFallback() bool {
 
 fn containsCancel(value: []const u8) bool {
     return std.mem.indexOfAny(u8, value, "\x1b\x03") != null;
+}
+
+test "sanitizeForTerminal strips control characters" {
+    const allocator = std.testing.allocator;
+
+    // Clean string returns same pointer (no allocation)
+    const clean = try sanitizeForTerminal(allocator, "hello world");
+    try std.testing.expectEqualStrings("hello world", clean);
+
+    // ESC sequence is stripped
+    const with_esc = try sanitizeForTerminal(allocator, "feat\x1b[2Jpwned");
+    defer allocator.free(with_esc);
+    try std.testing.expectEqualStrings("feat[2Jpwned", with_esc);
+
+    // Null bytes, tabs, newlines, DEL all stripped
+    const with_ctrl = try sanitizeForTerminal(allocator, "a\x00b\tc\nd\x7fe");
+    defer allocator.free(with_ctrl);
+    try std.testing.expectEqualStrings("abcde", with_ctrl);
+
+    // Empty string
+    const empty = try sanitizeForTerminal(allocator, "");
+    try std.testing.expectEqualStrings("", empty);
 }
 
 test "containsCancel recognizes ESC and ctrl-c bytes" {

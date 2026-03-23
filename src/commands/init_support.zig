@@ -95,6 +95,9 @@ pub fn installShellConfig(
     shell: Shell,
     dry_run: bool,
 ) !InstallResult {
+    // Security: reject symlinked shell config files to prevent writing to unintended targets
+    if (isSymlink(config_path)) return error.RefusingSymlink;
+
     const existing = std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024) catch |err| switch (err) {
         error.FileNotFound => try allocator.dupe(u8, ""),
         else => return err,
@@ -128,6 +131,9 @@ pub fn removeShellConfig(
     config_path: []const u8,
     dry_run: bool,
 ) !RemoveResult {
+    // Security: reject symlinked shell config files to prevent writing to unintended targets
+    if (isSymlink(config_path)) return error.RefusingSymlink;
+
     const existing = std.fs.cwd().readFileAlloc(allocator, config_path, 1024 * 1024) catch |err| switch (err) {
         error.FileNotFound => return .not_found,
         else => return err,
@@ -183,6 +189,18 @@ pub fn shellName(shell: Shell) []const u8 {
         .zsh => "zsh",
         .powershell => "powershell",
     };
+}
+
+/// Detect symlinks using lstat to avoid following them. This prevents symlink attacks
+/// where writing to a symlinked rc file would modify the symlink target.
+fn isSymlink(path: []const u8) bool {
+    if (builtin.os.tag == .windows) return false;
+    const stat = std.posix.fstatat(
+        std.fs.cwd().fd,
+        path,
+        std.posix.AT.SYMLINK_NOFOLLOW,
+    ) catch return false;
+    return (stat.mode & std.posix.S.IFMT) == std.posix.S.IFLNK;
 }
 
 fn bashConfigPath(allocator: std.mem.Allocator, home: []const u8) ![]u8 {
