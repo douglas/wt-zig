@@ -129,9 +129,13 @@ pub fn getExistingWorktreeBranches(allocator: std.mem.Allocator) ![][]u8 {
 }
 
 pub fn getMergedBranches(allocator: std.mem.Allocator, base: []const u8) ![][]u8 {
+    // Security: use --merged=<base> format to prevent base from being
+    // interpreted as a flag if it starts with "-".
+    const merged_flag = try std.fmt.allocPrint(allocator, "--merged={s}", .{base});
+    defer allocator.free(merged_flag);
     const output = try gitOutput(
         allocator,
-        &.{ "branch", "--merged", base, "--format=%(refname:short)" },
+        &.{ "branch", merged_flag, "--format=%(refname:short)" },
     );
     defer allocator.free(output);
 

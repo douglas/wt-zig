@@ -61,7 +61,7 @@ pub fn confirmPrompt(
 /// Strip control characters (ASCII < 32 and DEL 127) from a string to prevent
 /// terminal manipulation via ANSI escape sequences in untrusted input like
 /// branch names or PR titles.
-fn sanitizeForTerminal(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
+pub fn sanitizeForTerminal(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
     // Fast path: if no control characters, return the original slice
     for (input) |ch| {
         if (ch < 32 or ch == 127) break;

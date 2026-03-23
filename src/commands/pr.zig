@@ -82,14 +82,17 @@ pub fn runRemoteCommand(
         else => return output.usageError(ctx, stdout, stderr, command_name, usageText(remote_type)),
     }
 
+    const safe_input = prompt.sanitizeForTerminal(allocator, input) catch input;
+    defer if (safe_input.ptr != input.ptr) allocator.free(safe_input);
+
     const resolved = pr_git.resolveBranchName(allocator, remote_type, input) catch |err| switch (err) {
         error.InvalidPullRequestInput => {
             if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), input });
+                const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), safe_input });
                 defer allocator.free(message);
                 try output.emitError(ctx, stdout, command_name, message);
             } else {
-                try stderr.print("invalid {s} number or URL: {s}\n", .{ pr_git.commandName(remote_type), input });
+                try stderr.print("invalid {s} number or URL: {s}\n", .{ pr_git.commandName(remote_type), safe_input });
             }
             return 1;
         },
@@ -105,21 +108,21 @@ pub fn runRemoteCommand(
         },
         error.PlatformLookupFailed => {
             if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "failed to look up branch for {s}: {s}", .{ pr_git.label(remote_type), input });
+                const message = try std.fmt.allocPrint(allocator, "failed to look up branch for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
                 defer allocator.free(message);
                 try output.emitError(ctx, stdout, command_name, message);
             } else {
-                try stderr.print("failed to look up branch for {s}: {s}\n", .{ pr_git.label(remote_type), input });
+                try stderr.print("failed to look up branch for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
             }
             return 1;
         },
         error.EmptyBranchName => {
             if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "empty branch name returned for {s}: {s}", .{ pr_git.label(remote_type), input });
+                const message = try std.fmt.allocPrint(allocator, "empty branch name returned for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
                 defer allocator.free(message);
                 try output.emitError(ctx, stdout, command_name, message);
             } else {
-                try stderr.print("empty branch name returned for {s}: {s}\n", .{ pr_git.label(remote_type), input });
+                try stderr.print("empty branch name returned for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
             }
             return 1;
         },
@@ -189,11 +192,13 @@ pub fn runRemoteCommand(
         return 0;
     }
 
+    const safe_branch = prompt.sanitizeForTerminal(allocator, resolved.branch) catch resolved.branch;
+    defer if (safe_branch.ptr != resolved.branch.ptr) allocator.free(safe_branch);
     try stdout.writeAll(pr_git.label(remote_type));
     try stdout.writeAll(" #");
     try stdout.writeAll(resolved.id);
     try stdout.writeAll(" (");
-    try stdout.writeAll(resolved.branch);
+    try stdout.writeAll(safe_branch);
     try stdout.writeAll(") checked out at: ");
     try stdout.writeAll(outcome.path);
     try stdout.writeByte('\n');

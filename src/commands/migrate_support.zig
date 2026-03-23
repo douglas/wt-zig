@@ -4,6 +4,7 @@ const fs = @import("../fs.zig");
 const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const proc = @import("../process.zig");
+const prompt = @import("../prompt.zig");
 
 pub const Action = enum {
     move,
@@ -198,10 +199,13 @@ pub fn applyPlan(
     for (plan) |item| {
         if (item.primary) continue;
 
+        const safe_branch = prompt.sanitizeForTerminal(allocator, item.branch) catch item.branch;
+        defer if (safe_branch.ptr != item.branch.ptr) allocator.free(safe_branch);
+
         switch (item.action) {
             .skip => {
                 skipped += 1;
-                if (!output.isJson(ctx)) try stdout.print("Skipped {s}: {s}\n", .{ item.branch, item.reason });
+                if (!output.isJson(ctx)) try stdout.print("Skipped {s}: {s}\n", .{ safe_branch, item.reason });
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -214,7 +218,7 @@ pub fn applyPlan(
             .move, .move_force => {
                 moveLinkedWorktree(allocator, item.from, item.to.?, item.action == .move_force, stderr) catch |err| {
                     failed += 1;
-                    if (!output.isJson(ctx)) try stdout.print("Failed {s}: {s}\n", .{ item.branch, @errorName(err) });
+                    if (!output.isJson(ctx)) try stdout.print("Failed {s}: {s}\n", .{ safe_branch, @errorName(err) });
                     try results.append(allocator, .{
                         .branch = item.branch,
                         .from = item.from,
@@ -227,7 +231,7 @@ pub fn applyPlan(
                 };
 
                 moved += 1;
-                if (!output.isJson(ctx)) try stdout.print("Moved {s}: {s} -> {s}\n", .{ item.branch, item.from, item.to.? });
+                if (!output.isJson(ctx)) try stdout.print("Moved {s}: {s} -> {s}\n", .{ safe_branch, item.from, item.to.? });
                 try results.append(allocator, .{
                     .branch = item.branch,
                     .from = item.from,
@@ -335,7 +339,9 @@ fn movePrimaryCheckout(
 
     const message = result.trimmedStderr();
     if (message.len != 0) {
-        try stderr.print("failed to repair worktrees after moving primary checkout: {s}\n", .{message});
+        const safe = prompt.sanitizeForTerminal(allocator, message) catch message;
+        defer if (safe.ptr != message.ptr) allocator.free(safe);
+        try stderr.print("failed to repair worktrees after moving primary checkout: {s}\n", .{safe});
     }
     return error.GitCommandFailed;
 }
@@ -359,7 +365,9 @@ fn moveLinkedWorktree(
 
     const message = result.trimmedStderr();
     if (message.len != 0) {
-        try stderr.print("failed to move worktree from {s} to {s}: {s}\n", .{ from, to, message });
+        const safe = prompt.sanitizeForTerminal(allocator, message) catch message;
+        defer if (safe.ptr != message.ptr) allocator.free(safe);
+        try stderr.print("failed to move worktree from {s} to {s}: {s}\n", .{ from, to, safe });
     }
     return error.GitCommandFailed;
 }

@@ -2,6 +2,7 @@ const std = @import("std");
 const config = @import("../config.zig");
 const output = @import("../output.zig");
 const path = @import("../path.zig");
+const prompt = @import("../prompt.zig");
 
 pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     _ = stderr;
@@ -80,16 +81,16 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
 
     if (hasHooks(cfg.hooks)) {
         try stdout.writeAll("Hooks:\n");
-        try printHookGroup("pre_create", cfg.hooks.pre_create, stdout);
-        try printHookGroup("post_create", cfg.hooks.post_create, stdout);
-        try printHookGroup("pre_checkout", cfg.hooks.pre_checkout, stdout);
-        try printHookGroup("post_checkout", cfg.hooks.post_checkout, stdout);
-        try printHookGroup("pre_remove", cfg.hooks.pre_remove, stdout);
-        try printHookGroup("post_remove", cfg.hooks.post_remove, stdout);
-        try printHookGroup("pre_pr", cfg.hooks.pre_pr, stdout);
-        try printHookGroup("post_pr", cfg.hooks.post_pr, stdout);
-        try printHookGroup("pre_mr", cfg.hooks.pre_mr, stdout);
-        try printHookGroup("post_mr", cfg.hooks.post_mr, stdout);
+        try printHookGroup("pre_create", cfg.hooks.pre_create, stdout, ctx.allocator);
+        try printHookGroup("post_create", cfg.hooks.post_create, stdout, ctx.allocator);
+        try printHookGroup("pre_checkout", cfg.hooks.pre_checkout, stdout, ctx.allocator);
+        try printHookGroup("post_checkout", cfg.hooks.post_checkout, stdout, ctx.allocator);
+        try printHookGroup("pre_remove", cfg.hooks.pre_remove, stdout, ctx.allocator);
+        try printHookGroup("post_remove", cfg.hooks.post_remove, stdout, ctx.allocator);
+        try printHookGroup("pre_pr", cfg.hooks.pre_pr, stdout, ctx.allocator);
+        try printHookGroup("post_pr", cfg.hooks.post_pr, stdout, ctx.allocator);
+        try printHookGroup("pre_mr", cfg.hooks.pre_mr, stdout, ctx.allocator);
+        try printHookGroup("post_mr", cfg.hooks.post_mr, stdout, ctx.allocator);
         try stdout.writeByte('\n');
     } else {
         try stdout.writeAll("Hooks:    (none configured)\n\n");
@@ -111,8 +112,10 @@ fn hasHooks(hooks: config.Hooks) bool {
         hooks.post_mr.len != 0;
 }
 
-fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.Io.Writer) !void {
+fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
     for (commands) |command| {
-        try writer.print("  {s}: {s}\n", .{ name, command });
+        const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
+        defer if (safe.ptr != command.ptr) allocator.free(safe);
+        try writer.print("  {s}: {s}\n", .{ name, safe });
     }
 }

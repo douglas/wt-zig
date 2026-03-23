@@ -1,6 +1,7 @@
 const std = @import("std");
 const output = @import("../output.zig");
 const proc = @import("../process.zig");
+const prompt = @import("../prompt.zig");
 
 pub fn run(
     ctx: output.Context,
@@ -25,6 +26,9 @@ pub fn run(
         return 0;
     }
 
-    try stderr.print("failed to prune worktrees: {s}\n", .{result.trimmedStderr()});
+    const msg = result.trimmedStderr();
+    const safe = prompt.sanitizeForTerminal(allocator, msg) catch msg;
+    defer if (safe.ptr != msg.ptr) allocator.free(safe);
+    try stderr.print("failed to prune worktrees: {s}\n", .{safe});
     return 1;
 }

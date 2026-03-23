@@ -80,7 +80,9 @@ pub fn run(
 
         try stdout.print("Would remove {d} worktree(s) for merged branches:\n", .{candidates.len});
         for (candidates) |entry| {
-            try stdout.print("  - {s} ({s})\n", .{ entry.branch.?, entry.path });
+            const safe = prompt.sanitizeForTerminal(allocator, entry.branch.?) catch entry.branch.?;
+            defer if (safe.ptr != entry.branch.?.ptr) allocator.free(safe);
+            try stdout.print("  - {s} ({s})\n", .{ safe, entry.path });
         }
         return 0;
     }
@@ -89,16 +91,18 @@ pub fn run(
     var skipped_count: usize = 0;
     for (candidates) |entry| {
         const branch = entry.branch.?;
+        const safe = prompt.sanitizeForTerminal(allocator, branch) catch branch;
+        defer if (safe.ptr != branch.ptr) allocator.free(safe);
 
         if (!parsed.force) {
-            const label = try std.fmt.allocPrint(allocator, "Remove worktree for merged branch '{s}'?", .{branch});
+            const label = try std.fmt.allocPrint(allocator, "Remove worktree for merged branch '{s}'?", .{safe});
             defer allocator.free(label);
 
             const confirmed = prompt.confirmPrompt(allocator, label, stderr) catch false;
             if (!confirmed) {
                 skipped_count += 1;
                 if (!output.isJson(ctx)) {
-                    try stdout.print("  Skipped: {s}\n", .{branch});
+                    try stdout.print("  Skipped: {s}\n", .{safe});
                 }
                 continue;
             }
@@ -108,12 +112,12 @@ pub fn run(
             error.NoSuchWorktree, error.CannotRemoveMainWorktree => continue,
             error.HookCommandFailed => {
                 skipped_count += 1;
-                if (!output.isJson(ctx)) try stderr.print("skipped merged branch {s}: pre-remove hook failed\n", .{branch});
+                if (!output.isJson(ctx)) try stderr.print("skipped merged branch {s}: pre-remove hook failed\n", .{safe});
                 continue;
             },
             error.GitCommandFailed => {
                 skipped_count += 1;
-                if (!output.isJson(ctx)) try stdout.print("  Failed to remove {s}\n", .{branch});
+                if (!output.isJson(ctx)) try stdout.print("  Failed to remove {s}\n", .{safe});
                 continue;
             },
             else => return err,
@@ -123,7 +127,7 @@ pub fn run(
 
         removed_count += 1;
         if (!output.isJson(ctx)) {
-            try stdout.print("Removed worktree: {s}\n", .{branch});
+            try stdout.print("Removed worktree: {s}\n", .{safe});
         }
     }
 

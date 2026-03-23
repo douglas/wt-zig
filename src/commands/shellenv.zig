@@ -168,7 +168,7 @@ fn powershellShellenv() []const u8 {
     \\    if ($exitCode -eq 0) {
     \\        $cdPath = $output | Select-String -Pattern "^wt navigating to: " | ForEach-Object { $_.Line.Substring(18) }
     \\        if ($cdPath) {
-    \\            Set-Location $cdPath
+    \\            Set-Location -LiteralPath $cdPath
     \\        }
     \\    }
     \\    $global:LASTEXITCODE = $exitCode
@@ -236,7 +236,7 @@ test "shellenv includes json guard and completion blocks" {
     try std.testing.expectEqual(0, exit_code);
     if (builtin.os.tag == .windows) {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Register-ArgumentCompleter") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Set-Location $cdPath") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Set-Location -LiteralPath $cdPath") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
     } else {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);

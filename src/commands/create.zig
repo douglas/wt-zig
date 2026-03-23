@@ -4,6 +4,7 @@ const copy_files = @import("../copy_files.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const proc = @import("../process.zig");
+const prompt = @import("../prompt.zig");
 const git_repo = @import("../git/repo.zig");
 const path_mod = @import("../path.zig");
 const worktree = @import("../git/worktree.zig");
@@ -102,13 +103,16 @@ fn runGitCreate(
     base: []const u8,
     stderr: *std.Io.Writer,
 ) !bool {
-    const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "add", path, "-b", branch, base });
+    const owned = try allocator.dupe([]const u8, &.{ "git", "worktree", "add", path, "-b", branch, "--", base });
     defer allocator.free(owned);
 
     var result = try proc.run(allocator, owned);
     defer result.deinit(allocator);
 
     if (result.succeeded()) return true;
-    try stderr.print("failed to create worktree: {s}\n", .{result.trimmedStderr()});
+    const msg = result.trimmedStderr();
+    const safe = prompt.sanitizeForTerminal(allocator, msg) catch msg;
+    defer if (safe.ptr != msg.ptr) allocator.free(safe);
+    try stderr.print("failed to create worktree: {s}\n", .{safe});
     return false;
 }

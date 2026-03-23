@@ -1,5 +1,6 @@
 const std = @import("std");
 const output = @import("../output.zig");
+const prompt = @import("../prompt.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub fn run(
@@ -25,15 +26,20 @@ pub fn run(
         return 0;
     }
 
+    const allocator = ctx.allocator;
     for (result.entries) |entry| {
         try stdout.writeAll(entry.path);
 
         if (entry.head) |head| {
-            try stdout.print(" {s}", .{head});
+            const safe = prompt.sanitizeForTerminal(allocator, head) catch head;
+            defer if (safe.ptr != head.ptr) allocator.free(safe);
+            try stdout.print(" {s}", .{safe});
         }
 
         if (entry.branch) |branch| {
-            try stdout.print(" [{s}]", .{branch});
+            const safe = prompt.sanitizeForTerminal(allocator, branch) catch branch;
+            defer if (safe.ptr != branch.ptr) allocator.free(safe);
+            try stdout.print(" [{s}]", .{safe});
         } else if (entry.detached) {
             try stdout.writeAll(" [detached]");
         } else if (entry.bare) {
@@ -44,7 +50,9 @@ pub fn run(
             if (reason.len == 0) {
                 try stdout.writeAll(" locked");
             } else {
-                try stdout.print(" locked={s}", .{reason});
+                const safe = prompt.sanitizeForTerminal(allocator, reason) catch reason;
+                defer if (safe.ptr != reason.ptr) allocator.free(safe);
+                try stdout.print(" locked={s}", .{safe});
             }
         }
 
@@ -52,7 +60,9 @@ pub fn run(
             if (reason.len == 0) {
                 try stdout.writeAll(" prunable");
             } else {
-                try stdout.print(" prunable={s}", .{reason});
+                const safe = prompt.sanitizeForTerminal(allocator, reason) catch reason;
+                defer if (safe.ptr != reason.ptr) allocator.free(safe);
+                try stdout.print(" prunable={s}", .{safe});
             }
         }
 

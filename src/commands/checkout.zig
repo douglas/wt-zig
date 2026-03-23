@@ -204,14 +204,18 @@ fn fetchBranch(
 
         const fallback_message = fallback_result.trimmedStderr();
         if (fallback_message.len != 0) {
-            try stderr.print("failed to fetch branch: {s}\n", .{fallback_message});
+            const safe = prompt.sanitizeForTerminal(allocator, fallback_message) catch fallback_message;
+            defer if (safe.ptr != fallback_message.ptr) allocator.free(safe);
+            try stderr.print("failed to fetch branch: {s}\n", .{safe});
         }
         return;
     }
 
     const primary_message = primary_result.trimmedStderr();
     if (primary_message.len != 0) {
-        try stderr.print("failed to fetch branch: {s}\n", .{primary_message});
+        const safe = prompt.sanitizeForTerminal(allocator, primary_message) catch primary_message;
+        defer if (safe.ptr != primary_message.ptr) allocator.free(safe);
+        try stderr.print("failed to fetch branch: {s}\n", .{safe});
     }
 }
 
@@ -223,7 +227,7 @@ fn runGitWorktreeAdd(
 ) !bool {
     var args = std.ArrayList([]const u8).empty;
     defer args.deinit(allocator);
-    try args.appendSlice(allocator, &.{ "git", "worktree", "add", path });
+    try args.appendSlice(allocator, &.{ "git", "worktree", "add", path, "--" });
     try args.appendSlice(allocator, trailing_args);
     const owned = try args.toOwnedSlice(allocator);
     defer allocator.free(owned);
@@ -243,9 +247,11 @@ fn runGitCommand(
     if (result.succeeded()) return true;
     const message = result.trimmedStderr();
     if (message.len != 0) {
+        const safe = prompt.sanitizeForTerminal(allocator, message) catch message;
+        defer if (safe.ptr != message.ptr) allocator.free(safe);
         try stderr.writeAll(failure_prefix);
         try stderr.writeAll(": ");
-        try stderr.writeAll(message);
+        try stderr.writeAll(safe);
         try stderr.writeByte('\n');
     }
     return false;

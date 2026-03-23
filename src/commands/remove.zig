@@ -68,12 +68,14 @@ pub fn run(
 
     const outcome = removeWorktree(allocator, cfg, branch.?, parsed.force, stderr) catch |err| switch (err) {
         error.NoSuchWorktree => {
+            const safe_branch = prompt.sanitizeForTerminal(allocator, branch.?) catch branch.?;
+            defer if (safe_branch.ptr != branch.?.ptr) allocator.free(safe_branch);
             if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "no worktree found for branch: {s}", .{branch.?});
+                const message = try std.fmt.allocPrint(allocator, "no worktree found for branch: {s}", .{safe_branch});
                 defer allocator.free(message);
                 try output.emitError(ctx, stdout, "wt remove", message);
             } else {
-                try stderr.print("no worktree found for branch: {s}\n", .{branch.?});
+                try stderr.print("no worktree found for branch: {s}\n", .{safe_branch});
             }
             return 1;
         },
@@ -205,7 +207,10 @@ fn runGitRemove(allocator: std.mem.Allocator, path: []const u8, force: bool, std
     defer result.deinit(allocator);
 
     if (result.succeeded()) return true;
-    try stderr.print("failed to remove worktree: {s}\n", .{result.trimmedStderr()});
+    const msg = result.trimmedStderr();
+    const safe = prompt.sanitizeForTerminal(allocator, msg) catch msg;
+    defer if (safe.ptr != msg.ptr) allocator.free(safe);
+    try stderr.print("failed to remove worktree: {s}\n", .{safe});
     return false;
 }
 

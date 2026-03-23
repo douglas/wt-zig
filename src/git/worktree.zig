@@ -1,5 +1,6 @@
 const std = @import("std");
 const proc = @import("../process.zig");
+const prompt = @import("../prompt.zig");
 
 pub const Entry = struct {
     path: []const u8 = "",
@@ -29,7 +30,7 @@ pub fn list(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !ListResult {
     switch (result.term) {
         .Exited => |code| {
             if (code != 0) {
-                try printGitFailure(stderr, result.stderr, code);
+                try printGitFailure(allocator, stderr, result.stderr, code);
                 return error.GitCommandFailed;
             }
         },
@@ -48,14 +49,16 @@ pub fn list(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !ListResult {
     };
 }
 
-fn printGitFailure(stderr: *std.Io.Writer, git_stderr: []const u8, code: u8) !void {
+fn printGitFailure(allocator: std.mem.Allocator, stderr: *std.Io.Writer, git_stderr: []const u8, code: u8) !void {
     const trimmed = std.mem.trim(u8, git_stderr, " \r\n\t");
     if (trimmed.len == 0) {
         try stderr.print("git worktree list --porcelain failed with exit code {d}.\n", .{code});
         return;
     }
 
-    try stderr.print("git worktree list --porcelain failed: {s}\n", .{trimmed});
+    const safe = prompt.sanitizeForTerminal(allocator, trimmed) catch trimmed;
+    defer if (safe.ptr != trimmed.ptr) allocator.free(safe);
+    try stderr.print("git worktree list --porcelain failed: {s}\n", .{safe});
 }
 
 pub fn parsePorcelain(allocator: std.mem.Allocator, buffer: []u8) ![]Entry {
