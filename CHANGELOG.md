@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0 — 2026-03-23
+
+### Added
+
+- GitHub Actions CI workflow — runs build + test on push to main and PRs
+- GitHub Actions release workflow — cross-compiles for Linux (amd64/arm64) and macOS (Intel/Apple Silicon), creates GitHub release with tarballs, and publishes AUR package automatically on tag push
+
 ## 0.2.1 — 2026-03-23
 
 ### Security
