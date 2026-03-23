@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.1 — 2026-03-23
+
+### Security
+
+- Fixed TOCTOU race condition in copy_files symlink detection — now uses lstat via `fstatat(AT.SYMLINK_NOFOLLOW)` for atomic detection
+- Added root path resolution before bounds checking in copy_files to prevent symlinked parent directory bypass
+- Added `isChildPath` bounds validation to reject paths escaping source/destination roots
+- Moved boundary validation before `deleteTreeAbsolute` in worktree path cleanup
+- Added `sanitizeForTerminal` to strip control characters from all untrusted terminal output (branch names, git stderr, user input) across 12 command files
+- Added config file regular-file validation to prevent hangs on FIFOs/devices
+- Replaced fragile realpath-comparison symlink check with proper lstat in shell config installation
+- Fixed PowerShell `Set-Location` to use `-LiteralPath` preventing special character interpretation
+- Added `--` end-of-options separator in `git worktree add` commands to prevent flag injection
+- Used `--merged=<base>` format in `git branch` to prevent base branch flag injection
+- Added security documentation about quoting hook variables in config template
+
 ## 0.2.0 — 2026-03-20
 
 ### Added
