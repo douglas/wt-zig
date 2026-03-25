@@ -500,3 +500,110 @@ test "copyDir copies directory tree" {
 test "warmDiskCache does not crash on non-existent path" {
     warmDiskCache("/tmp/wt-zig-nonexistent-path-xyz");
 }
+
+// Fallback chain tests: starting from a higher tier must still produce correct
+// output via the standard fallback, regardless of filesystem support.
+// tmpDir is backed by /tmp which is typically tmpfs — clonefile and FICLONE will
+// fail there, forcing the chain all the way down to the standard tier.
+
+test "copyFileWithStrategy native_clone falls through to produce correct file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const src = try std.fs.path.join(allocator, &.{ root, "src.txt" });
+    defer allocator.free(src);
+    const dst = try std.fs.path.join(allocator, &.{ root, "dst.txt" });
+    defer allocator.free(dst);
+
+    const sf = try std.fs.createFileAbsolute(src, .{});
+    try sf.writeAll("fallback-content");
+    sf.close();
+
+    try copyFileWithStrategy(allocator, src, dst, .native_clone);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, dst, 1024);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("fallback-content", contents);
+}
+
+test "copyFileWithStrategy clone falls through to produce correct file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const src = try std.fs.path.join(allocator, &.{ root, "src.txt" });
+    defer allocator.free(src);
+    const dst = try std.fs.path.join(allocator, &.{ root, "dst.txt" });
+    defer allocator.free(dst);
+
+    const sf = try std.fs.createFileAbsolute(src, .{});
+    try sf.writeAll("clone-fallback");
+    sf.close();
+
+    try copyFileWithStrategy(allocator, src, dst, .clone);
+
+    const contents = try std.fs.cwd().readFileAlloc(allocator, dst, 1024);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("clone-fallback", contents);
+}
+
+test "copyDirWithStrategy native_clone falls through to produce correct tree" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const src_dir = try std.fs.path.join(allocator, &.{ root, "src" });
+    defer allocator.free(src_dir);
+    const dst_dir = try std.fs.path.join(allocator, &.{ root, "dst" });
+    defer allocator.free(dst_dir);
+
+    try std.fs.makeDirAbsolute(src_dir);
+    const f = try std.fs.path.join(allocator, &.{ src_dir, "data.txt" });
+    defer allocator.free(f);
+    const sf = try std.fs.createFileAbsolute(f, .{});
+    try sf.writeAll("dir-fallback");
+    sf.close();
+
+    try copyDirWithStrategy(allocator, src_dir, dst_dir, .native_clone);
+
+    const out = try std.fs.path.join(allocator, &.{ dst_dir, "data.txt" });
+    defer allocator.free(out);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, out, 64);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("dir-fallback", contents);
+}
+
+test "copyDirWithStrategy clone falls through to produce correct tree" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const src_dir = try std.fs.path.join(allocator, &.{ root, "src" });
+    defer allocator.free(src_dir);
+    const dst_dir = try std.fs.path.join(allocator, &.{ root, "dst" });
+    defer allocator.free(dst_dir);
+
+    try std.fs.makeDirAbsolute(src_dir);
+    const f = try std.fs.path.join(allocator, &.{ src_dir, "data.txt" });
+    defer allocator.free(f);
+    const sf = try std.fs.createFileAbsolute(f, .{});
+    try sf.writeAll("clone-dir-fallback");
+    sf.close();
+
+    try copyDirWithStrategy(allocator, src_dir, dst_dir, .clone);
+
+    const out = try std.fs.path.join(allocator, &.{ dst_dir, "data.txt" });
+    defer allocator.free(out);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, out, 64);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("clone-dir-fallback", contents);
+}

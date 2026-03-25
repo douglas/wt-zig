@@ -409,6 +409,80 @@ test "copyFiles rejects path traversal attempts" {
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().readFileAlloc(allocator, wt_secret, 1024));
 }
 
+test "copyFiles uses configured strategy and copies file" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const main_path = try std.fs.path.join(allocator, &.{ root, "main" });
+    defer allocator.free(main_path);
+    const wt_path = try std.fs.path.join(allocator, &.{ root, "worktree" });
+    defer allocator.free(wt_path);
+
+    try std.fs.makeDirAbsolute(main_path);
+    try std.fs.makeDirAbsolute(wt_path);
+
+    const env_path = try std.fs.path.join(allocator, &.{ main_path, ".env" });
+    defer allocator.free(env_path);
+    try writeTestFile(env_path, "KEY=val");
+
+    var cfg = config.testing_defaults;
+    // Explicit strategy — no auto-detection should occur.
+    cfg.copy_files = .{ .paths = &.{".env"}, .strategy = "standard" };
+
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &discard);
+
+    const dest_env = try std.fs.path.join(allocator, &.{ wt_path, ".env" });
+    defer allocator.free(dest_env);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, dest_env, 1024);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("KEY=val", contents);
+}
+
+test "copyFiles copies directories via dirs config" {
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const main_path = try std.fs.path.join(allocator, &.{ root, "main" });
+    defer allocator.free(main_path);
+    const wt_path = try std.fs.path.join(allocator, &.{ root, "worktree" });
+    defer allocator.free(wt_path);
+
+    try std.fs.makeDirAbsolute(main_path);
+    try std.fs.makeDirAbsolute(wt_path);
+
+    // Create a source directory with a nested file.
+    const src_cache = try std.fs.path.join(allocator, &.{ main_path, "node_modules" });
+    defer allocator.free(src_cache);
+    try std.fs.makeDirAbsolute(src_cache);
+    const pkg_file = try std.fs.path.join(allocator, &.{ src_cache, "pkg.js" });
+    defer allocator.free(pkg_file);
+    try writeTestFile(pkg_file, "module.exports={}");
+
+    var cfg = config.testing_defaults;
+    cfg.copy_files = .{ .dirs = &.{"node_modules"}, .strategy = "standard" };
+
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    copyFiles(allocator, &cfg, "test-repo", main_path, wt_path, &discard);
+
+    // Directory and its contents should be copied.
+    const dest_file = try std.fs.path.join(allocator, &.{ wt_path, "node_modules", "pkg.js" });
+    defer allocator.free(dest_file);
+    const contents = try std.fs.cwd().readFileAlloc(allocator, dest_file, 1024);
+    defer allocator.free(contents);
+    try std.testing.expectEqualStrings("module.exports={}", contents);
+}
+
 test "isChildPath validates path containment" {
     try std.testing.expect(isChildPath("/a/b/c", "/a/b"));
     try std.testing.expect(isChildPath("/a/b", "/a/b"));

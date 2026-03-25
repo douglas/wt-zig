@@ -199,6 +199,8 @@ test "parseFile reads copy_files with global and per-repo paths" {
         \\
         \\[copy_files]
         \\paths = [".env", "config/local.yml"]
+        \\dirs = ["node_modules", "target"]
+        \\strategy = "rsync"
         \\
         \\[copy_files.campaigns]
         \\paths = [".env.local", ".env.test.local"]
@@ -218,6 +220,12 @@ test "parseFile reads copy_files with global and per-repo paths" {
     try std.testing.expectEqual(2, parsed.copy_files.paths.len);
     try std.testing.expectEqualStrings(".env", parsed.copy_files.paths[0]);
     try std.testing.expectEqualStrings("config/local.yml", parsed.copy_files.paths[1]);
+
+    try std.testing.expectEqual(2, parsed.copy_files.dirs.len);
+    try std.testing.expectEqualStrings("node_modules", parsed.copy_files.dirs[0]);
+    try std.testing.expectEqualStrings("target", parsed.copy_files.dirs[1]);
+
+    try std.testing.expectEqualStrings("rsync", parsed.copy_files.strategy.?);
 
     try std.testing.expectEqual(2, parsed.copy_files.repo_overrides.len);
 
