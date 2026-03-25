@@ -21,6 +21,11 @@ The current port now covers the full user-facing command surface from `wt`, incl
 - add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
 - run configured pre/post hooks for `checkout`, `create`, `remove`, `pr`, and `mr`
 - copy files from main worktree into new worktrees via `[copy_files]` config, with per-repo overrides
+- copy directories (build caches) using platform-native CoW (`clonefile` on APFS, `FICLONE` on Btrfs/XFS) via `dirs` under `[copy_files]`
+- warm the OS page/metadata cache after worktree creation in a background thread so subsequent `grep`/`git status` calls are fast
+- `wt jump [query]` — navigate to an existing worktree by fuzzy branch name (alias: `j`)
+- fast worktree removal via atomic `rename(2)` to trash + `git worktree prune` (O(1) for large untracked directories)
+- `wt overlay <name>` — experimental OverlayFS workspace on top of the main worktree (Linux, requires `fuse-overlayfs`)
 - add `remove`, `done`, `prune`, `cleanup`, and `migrate`
 - add `pr` and `mr` flows that resolve branches through `gh` and `glab`
 - add interactive selectors for `checkout`, `remove`, `pr`, and `mr` in text mode
@@ -60,6 +65,11 @@ wt info
 wt config show
 wt config path
 wt config init [--force]
+wt jump [query]
+wt j [query]
+wt overlay <name>
+wt overlay --rm [--keep] <name>
+wt overlay --list
 wt --format json <command>
 ```
 
