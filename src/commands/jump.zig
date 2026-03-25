@@ -1,6 +1,5 @@
 const std = @import("std");
 const output = @import("../output.zig");
-const prompt = @import("../prompt.zig");
 const worktree = @import("../git/worktree.zig");
 
 pub fn run(
@@ -18,26 +17,7 @@ pub fn run(
     const linked = if (result.entries.len > 1) result.entries[1..] else &.{};
 
     if (args.len == 0) {
-        // No query: interactive selection over all linked worktrees.
-        if (output.isJson(ctx)) {
-            try output.emitError(ctx, stdout, "wt jump", "wt jump with --format json requires an explicit query argument");
-            return 1;
-        }
-        if (linked.len == 0) {
-            try stderr.writeAll("No linked worktrees found.\n");
-            return 1;
-        }
-        var branches = std.ArrayList([]const u8).empty;
-        defer branches.deinit(allocator);
-        for (linked) |entry| {
-            if (entry.branch) |b| try branches.append(allocator, b);
-        }
-        const selected = prompt.selectItem(allocator, "Select worktree to jump to", branches.items, stderr) catch |err| switch (err) {
-            prompt.err_cancelled, error.InvalidSelection => return 1,
-            else => return err,
-        };
-        const matched = findExact(linked, selected.value) orelse return 1;
-        return navigate(ctx, matched, stdout);
+        return output.usageError(ctx, stdout, stderr, "wt jump", "Usage: wt jump <query>");
     }
 
     const query = args[0];
@@ -61,6 +41,7 @@ pub fn run(
         return 1;
     }
     try stderr.print("No worktree found matching \"{s}\".\n", .{query});
+    try stderr.print("hint: run 'wt checkout {s}' to create one\n", .{query});
     return 1;
 }
 

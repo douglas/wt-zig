@@ -24,6 +24,7 @@ pub fn selectItem(
         try stderr.print("  {d}) {s}\n", .{ index + 1, safe_item });
     }
     try stderr.print("Enter number [1-{d}]: ", .{items.len});
+    try stderr.flush();
 
     const line = try readLine(allocator, tty.file);
     defer allocator.free(line);
@@ -51,6 +52,7 @@ pub fn confirmPrompt(
     defer if (safe_label.ptr != label.ptr) allocator.free(safe_label);
     try stderr.writeAll(safe_label);
     try stderr.writeAll(" [y/N]: ");
+    try stderr.flush();
     const line = try readLine(allocator, tty.file);
     defer allocator.free(line);
     if (line.len == 0 or containsCancel(line)) return false;
