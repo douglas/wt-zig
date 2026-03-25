@@ -98,6 +98,8 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "(none)";
     const pattern_source = if (pattern_info) |info| info.source else cfg.sources.pattern;
+    const copy_strategy = cfg.copy_files.strategy orelse "auto-detect";
+    const copy_strategy_source = if (cfg.copy_files.strategy != null) "config" else "default";
 
     try writer.print(
         \\Config file: {s} ({s})
@@ -107,6 +109,7 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
         \\  strategy = {s} ({s})
         \\  pattern = {s} ({s})
         \\  separator = "{s}" ({s})
+        \\  copy_strategy = {s} ({s})
         \\
     ,
         .{
@@ -120,6 +123,8 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
             pattern_source,
             cfg.separator,
             cfg.sources.separator,
+            copy_strategy,
+            copy_strategy_source,
         },
     );
 }
@@ -128,6 +133,8 @@ fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "(none)";
     const pattern_source = if (pattern_info) |info| info.source else cfg.sources.pattern;
+    const copy_strategy = cfg.copy_files.strategy orelse "auto-detect";
+    const copy_strategy_source = if (cfg.copy_files.strategy != null) "config" else "default";
 
     try output.emitSuccess(ctx, stdout, "wt config show", .{
         .config_file = .{
@@ -139,6 +146,7 @@ fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.
             .strategy = .{ .value = cfg.strategy, .source = cfg.sources.strategy },
             .pattern = .{ .value = pattern, .source = pattern_source },
             .separator = .{ .value = cfg.separator, .source = cfg.sources.separator },
+            .copy_strategy = .{ .value = copy_strategy, .source = copy_strategy_source },
         },
     });
 }
