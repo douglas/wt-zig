@@ -19,6 +19,8 @@ const prune_cmd = @import("commands/prune.zig");
 const remove_cmd = @import("commands/remove.zig");
 const shellenv_cmd = @import("commands/shellenv.zig");
 const version_cmd = @import("commands/version.zig");
+const jump_cmd = @import("commands/jump.zig");
+const overlay_cmd = @import("commands/overlay.zig");
 
 pub fn run(
     allocator: std.mem.Allocator,
@@ -88,6 +90,8 @@ pub fn run(
         .examples => examples_cmd.run(ctx, args[1..], stdout, stderr),
         .shellenv => shellenv_cmd.run(ctx, args[1..], stdout, stderr),
         .init => init_cmd.run(ctx, args[1..], stdout, stderr),
+        .jump => jump_cmd.run(ctx, args[1..], stdout, stderr),
+        .overlay => overlay_cmd.run(ctx, args[1..], stdout, stderr),
     };
 }
 

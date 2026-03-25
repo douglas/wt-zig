@@ -52,7 +52,7 @@ fn unixShellenv() []const u8 {
     \\        COMPREPLY=()
     \\        cur="${COMP_WORDS[COMP_CWORD]}"
     \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
-    \\        commands="checkout co create pr mr list ls remove rm cleanup migrate prune help shellenv init info config examples version"
+    \\        commands="checkout co create pr mr list ls remove rm cleanup migrate prune help shellenv init info config examples version jump j overlay"
     \\
     \\        if [ $COMP_CWORD -eq 1 ]; then
     \\            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -105,6 +105,9 @@ fn unixShellenv() []const u8 {
     \\            'info:Show worktree location configuration'
     \\            'config:Manage wt configuration'
     \\            'version:Show version information'
+    \\            'jump:Navigate to a worktree by branch name'
+    \\            'j:Navigate to a worktree by branch name'
+    \\            'overlay:[experimental] OverlayFS workspace on main worktree (Linux)'
     \\        )
     \\
     \\        if (( CURRENT == 2 )); then
@@ -178,7 +181,7 @@ fn powershellShellenv() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version')
+    \\    $commands = @('checkout', 'co', 'create', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'overlay')
     \\
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
@@ -242,7 +245,7 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create pr mr list ls remove rm cleanup migrate prune help shellenv init info config examples version\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create pr mr list ls remove rm cleanup migrate prune help shellenv init info config examples version jump j overlay\"") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }
