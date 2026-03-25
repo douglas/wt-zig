@@ -30,6 +30,7 @@ pub const ParsedFile = struct {
         freeHookList(allocator, self.hooks.post_mr);
         freeStringList(allocator, self.copy_files.paths);
         freeStringList(allocator, self.copy_files.dirs);
+        if (self.copy_files.strategy) |s| allocator.free(s);
         for (self.copy_files.repo_overrides) |override| {
             allocator.free(override.repo_name);
             freeStringList(allocator, override.paths);
@@ -74,6 +75,10 @@ pub const default_config_template =
     \\# Directories to copy using copy-on-write when supported (clonefile on APFS,
     \\# FICLONE on Btrfs/XFS). Ideal for git-ignored build caches like node_modules.
     \\# dirs = ["node_modules", ".build", "target"]
+    \\#
+    \\# Copy strategy for files and directories. Auto-detected if omitted.
+    \\# Options: native_clone (clonefile/FICLONE), clone (cp --reflink), rsync, standard
+    \\# strategy = "native_clone"
     \\#
     \\# Per-repo overrides add extra files when the repo name matches:
     \\# [copy_files.my-project]
@@ -188,6 +193,14 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
                 parsed.pattern = string_value;
             } else if (std.mem.eql(u8, key, "separator")) {
                 parsed.separator = string_value;
+            } else {
+                allocator.free(string_value);
+            }
+        } else if (current_section) |section| {
+            if (std.mem.eql(u8, section, "copy_files") and std.mem.eql(u8, key, "strategy")) {
+                parsed.copy_files.strategy = string_value;
+            } else {
+                allocator.free(string_value);
             }
         }
     }

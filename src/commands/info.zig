@@ -11,6 +11,8 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "unknown";
 
+    const copy_strategy = cfg.copy_files.strategy orelse "auto-detect";
+
     if (output.isJson(ctx)) {
         try output.emitSuccess(ctx, stdout, "wt info", .{
             .config = .{
@@ -20,6 +22,7 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
                 .pattern = pattern,
                 .root = cfg.root,
                 .separator = cfg.separator,
+                .copy_strategy = copy_strategy,
             },
             .strategies = .{
                 .{ .name = "global", .pattern = "{.worktreeRoot}/{.repo.Name}/{.branch}" },
@@ -45,12 +48,13 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
     }
 
     try stdout.print(
-        \\Config:    {s} ({s})
+        \\Config:         {s} ({s})
         \\
-        \\Strategy:  {s}
-        \\Pattern:   {s}
-        \\Root:      {s}
-        \\Separator: "{s}"
+        \\Strategy:       {s}
+        \\Pattern:        {s}
+        \\Root:           {s}
+        \\Separator:      "{s}"
+        \\Copy strategy:  {s}
         \\
     ,
         .{
@@ -60,6 +64,7 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
             pattern,
             cfg.root,
             cfg.separator,
+            copy_strategy,
         },
     );
     try stdout.writeAll(

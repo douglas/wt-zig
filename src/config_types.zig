@@ -10,6 +10,9 @@ pub const CopyFiles = struct {
     /// Directories to copy (CoW when supported: clonefile on APFS, FICLONE on Btrfs/XFS).
     /// Use for build caches and other git-ignored directories (e.g. node_modules, target/).
     dirs: []const []const u8 = &.{},
+    /// Copy strategy override. null = auto-detect at runtime.
+    /// Valid values: "native_clone", "clone", "rsync", "standard".
+    strategy: ?[]const u8 = null,
     repo_overrides: []const CopyFilesRepoOverride = &.{},
 };
 

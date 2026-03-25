@@ -26,12 +26,24 @@ pub fn copyFiles(
     };
     defer allocator.free(resolved_wt);
 
-    copyPaths(allocator, cfg.copy_files.paths, resolved_main, resolved_wt, stderr);
-    copyDirs(allocator, cfg.copy_files.dirs, resolved_main, resolved_wt, stderr);
+    // Resolve effective copy strategy: config override or auto-detect on the actual filesystem.
+    const strategy = if (cfg.copy_files.strategy) |s|
+        cow_copy.CopyStrategy.fromString(s) orelse blk: {
+            stderr.print("warning: copy_files: unknown strategy '{s}', using native_clone\n", .{s}) catch {};
+            break :blk cow_copy.CopyStrategy.native_clone;
+        }
+    else blk: {
+        const detected = cow_copy.detect(allocator, resolved_main);
+        stderr.print("note: copy strategy: {s} (auto-detected)\n", .{@tagName(detected)}) catch {};
+        break :blk detected;
+    };
+
+    copyPaths(allocator, cfg.copy_files.paths, resolved_main, resolved_wt, strategy, stderr);
+    copyDirs(allocator, cfg.copy_files.dirs, resolved_main, resolved_wt, strategy, stderr);
 
     for (cfg.copy_files.repo_overrides) |override| {
         if (std.mem.eql(u8, override.repo_name, repo_name)) {
-            copyPaths(allocator, override.paths, resolved_main, resolved_wt, stderr);
+            copyPaths(allocator, override.paths, resolved_main, resolved_wt, strategy, stderr);
         }
     }
 }
@@ -41,10 +53,11 @@ fn copyPaths(
     paths: []const []const u8,
     resolved_main: []const u8,
     resolved_wt: []const u8,
+    strategy: cow_copy.CopyStrategy,
     stderr: *std.Io.Writer,
 ) void {
     for (paths) |relative_path| {
-        copyOne(allocator, relative_path, resolved_main, resolved_wt, stderr);
+        copyOne(allocator, relative_path, resolved_main, resolved_wt, strategy, stderr);
     }
 }
 
@@ -53,10 +66,11 @@ fn copyDirs(
     dirs: []const []const u8,
     resolved_main: []const u8,
     resolved_wt: []const u8,
+    strategy: cow_copy.CopyStrategy,
     stderr: *std.Io.Writer,
 ) void {
     for (dirs) |relative_path| {
-        copyOneDir(allocator, relative_path, resolved_main, resolved_wt, stderr);
+        copyOneDir(allocator, relative_path, resolved_main, resolved_wt, strategy, stderr);
     }
 }
 
@@ -65,6 +79,7 @@ fn copyOneDir(
     relative_path: []const u8,
     resolved_main: []const u8,
     resolved_wt: []const u8,
+    strategy: cow_copy.CopyStrategy,
     stderr: *std.Io.Writer,
 ) void {
     // Security: same checks as copyOne — reject absolute paths and traversal.
@@ -104,7 +119,7 @@ fn copyOneDir(
         return;
     };
 
-    cow_copy.copyDir(allocator, abs_source, abs_dest) catch |err| {
+    cow_copy.copyDirWithStrategy(allocator, abs_source, abs_dest, strategy) catch |err| {
         stderr.print("warning: copy_files: failed to copy dir {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
     };
 }
@@ -114,6 +129,7 @@ fn copyOne(
     relative_path: []const u8,
     resolved_main: []const u8,
     resolved_wt: []const u8,
+    strategy: cow_copy.CopyStrategy,
     stderr: *std.Io.Writer,
 ) void {
     // Security: reject absolute paths (traversal is caught by bounds check below)
@@ -158,7 +174,7 @@ fn copyOne(
         return;
     };
 
-    cow_copy.copyFile(allocator, abs_source, abs_dest) catch |err| {
+    cow_copy.copyFileWithStrategy(allocator, abs_source, abs_dest, strategy) catch |err| {
         stderr.print("warning: copy_files: failed to copy {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
     };
 }

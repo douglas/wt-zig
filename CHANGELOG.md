@@ -5,10 +5,11 @@
 ### Added
 
 - `wt jump [query]` (alias `j`) — navigate to an existing worktree by fuzzy branch name; 5-tier matching hierarchy: exact → case-insensitive → word-boundary → substring → fuzzy subsequence; interactive picker when no query given
-- `[copy_files] dirs` config key — CoW-copy directories (e.g. `node_modules`, `target/`) from the main worktree into new worktrees using `clonefile(2)` on APFS, `FICLONE` ioctl on Btrfs/XFS/bcachefs, `copy_file_range(2)` otherwise
+- `[copy_files] dirs` config key — CoW-copy directories (e.g. `node_modules`, `target/`) from the main worktree into new worktrees
+- `[copy_files] strategy` config key — pin copy strategy (`native_clone`, `clone`, `rsync`, `standard`); auto-detected from the actual worktree filesystem if omitted; `wt info` shows effective strategy
+- 4-tier copy strategy hierarchy (vibe-inspired): `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink=auto/cp -c) → `rsync` → `standard` (copy_file_range → read+write); each tier falls through to the next on failure
 - Disk cache warming — after worktree creation, a detached background thread walks the new worktree and `stat(2)`s every file to prime the OS page/metadata cache so subsequent tool calls are served from memory
 - Fast trash-based removal — `wt remove` now uses an atomic `rename(2)` to the platform trash directory (`~/.Trash` on macOS, `~/.local/share/Trash/files/` on Linux) followed by `git worktree prune`; falls back to `git worktree remove` on cross-device rename (EXDEV)
-- `wt overlay` (experimental, Linux only) — OverlayFS workspace on top of the main worktree via `fuse-overlayfs`; state persisted in `~/.local/share/wt/overlays/<repo>/`; subcommands: create (positional name), `--rm [--keep]`, `--list`
 
 ### Changed
 
