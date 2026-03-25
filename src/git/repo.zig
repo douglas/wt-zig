@@ -17,6 +17,17 @@ pub fn getDefaultBase(allocator: std.mem.Allocator) ![]const u8 {
 }
 
 pub fn getRepoInfo(allocator: std.mem.Allocator) !path_mod.RepoInfo {
+    var discard_buf: [4096]u8 = undefined;
+    var discard = std.Io.Writer.fixed(&discard_buf);
+    var listed = try worktree.list(allocator, &discard);
+    defer listed.deinit(allocator);
+    return getRepoInfoWithWorktrees(allocator, listed.entries);
+}
+
+pub fn getRepoInfoWithWorktrees(
+    allocator: std.mem.Allocator,
+    entries: []const worktree.Entry,
+) !path_mod.RepoInfo {
     const repo_root = try gitOutput(allocator, &.{ "rev-parse", "--show-toplevel" });
     errdefer allocator.free(repo_root);
 
@@ -46,7 +57,7 @@ pub fn getRepoInfo(allocator: std.mem.Allocator) !path_mod.RepoInfo {
     const default_base = try getDefaultBase(allocator);
     defer allocator.free(default_base);
 
-    const main_path = try getMainWorktreePath(allocator, default_base, repo_name, root);
+    const main_path = try getMainWorktreePathFromEntries(allocator, default_base, repo_name, root, entries);
     errdefer allocator.free(main_path);
 
     return .{
@@ -281,20 +292,16 @@ fn parseBranchLines(allocator: std.mem.Allocator, output: []const u8, base: []co
     return branches.toOwnedSlice(allocator);
 }
 
-fn getMainWorktreePath(
+fn getMainWorktreePathFromEntries(
     allocator: std.mem.Allocator,
     default_base: []const u8,
     repo_name: []const u8,
     repo_root: []const u8,
+    entries: []const worktree.Entry,
 ) ![]const u8 {
-    var discard_buf: [4096]u8 = undefined;
-    var discard = std.Io.Writer.fixed(&discard_buf);
-    var result = try worktree.list(allocator, &discard);
-    defer result.deinit(allocator);
-
-    if (result.entries.len > 0) {
+    if (entries.len > 0) {
         if (default_base.len != 0) {
-            for (result.entries) |entry| {
+            for (entries) |entry| {
                 if (entry.branch) |branch| {
                     if (std.mem.eql(u8, branch, default_base)) {
                         return allocator.dupe(u8, entry.path);
@@ -303,13 +310,13 @@ fn getMainWorktreePath(
             }
         }
 
-        for (result.entries) |entry| {
+        for (entries) |entry| {
             if (std.mem.eql(u8, std.fs.path.basename(entry.path), repo_name)) {
                 return allocator.dupe(u8, entry.path);
             }
         }
 
-        return allocator.dupe(u8, result.entries[0].path);
+        return allocator.dupe(u8, entries[0].path);
     }
 
     return allocator.dupe(u8, repo_root);

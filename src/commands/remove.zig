@@ -5,6 +5,7 @@ const output = @import("../output.zig");
 const path_mod = @import("../path.zig");
 const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
+const trash = @import("../trash.zig");
 const git_repo = @import("../git/repo.zig");
 const worktree = @import("../git/worktree.zig");
 
@@ -126,11 +127,11 @@ pub fn removeWorktree(
     force: bool,
     stderr: *std.Io.Writer,
 ) !Outcome {
-    var info = try git_repo.getRepoInfo(allocator);
-    defer git_repo.freeRepoInfo(allocator, &info);
-
     var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
     defer listed.deinit(allocator);
+
+    var info = try git_repo.getRepoInfoWithWorktrees(allocator, listed.entries);
+    defer git_repo.freeRepoInfo(allocator, &info);
 
     const existing = findBranchWorktree(listed.entries, branch) orelse return error.NoSuchWorktree;
     if (std.mem.eql(u8, existing.path, info.main)) return error.CannotRemoveMainWorktree;
@@ -146,8 +147,13 @@ pub fn removeWorktree(
     const navigate_to = try navigationTarget(allocator, existing_path, info.main);
     errdefer if (navigate_to) |path| allocator.free(path);
 
-    const success = try runGitRemove(allocator, existing_path, force, stderr);
-    if (!success) return error.GitCommandFailed;
+    // Fast path: rename to trash (O(1)) then prune git's internal refs.
+    // Falls back to synchronous git worktree remove on cross-device rename.
+    const used_trash = trashRemove(allocator, existing_path, stderr);
+    if (!used_trash) {
+        const success = try runGitRemove(allocator, existing_path, force, stderr);
+        if (!success) return error.GitCommandFailed;
+    }
 
     path_mod.cleanupWorktreePath(allocator, cfg, existing_path) catch |err| {
         try stderr.print(
@@ -162,6 +168,20 @@ pub fn removeWorktree(
         .path = existing_path,
         .navigate_to = navigate_to,
     };
+}
+
+/// Try to move the worktree to trash and prune git's metadata. Returns true on
+/// success, false if the caller should fall back to `git worktree remove`.
+fn trashRemove(allocator: std.mem.Allocator, path: []const u8, stderr: *std.Io.Writer) bool {
+    trash.moveToTrash(allocator, path) catch |err| switch (err) {
+        error.CrossDevice => return false,
+        else => return false,
+    };
+    // Directory is gone; git worktree prune cleans up the administrative refs.
+    var prune_result = proc.run(allocator, &.{ "git", "worktree", "prune" }) catch return true;
+    prune_result.deinit(allocator);
+    _ = stderr;
+    return true;
 }
 
 fn findBranchWorktree(entries: []const worktree.Entry, branch: []const u8) ?worktree.Entry {
