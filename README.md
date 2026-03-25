@@ -23,7 +23,7 @@ The current port now covers the full user-facing command surface from `wt`, incl
 - copy files from main worktree into new worktrees via `[copy_files]` config, with per-repo overrides
 - copy directories (build caches) via `dirs` under `[copy_files]`; 4-tier copy strategy: `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink=auto) → `rsync` → `standard`; auto-detected from the actual filesystem, configurable via `[copy_files] strategy`
 - warm the OS page/metadata cache after worktree creation in a background thread so subsequent `grep`/`git status` calls are fast
-- `wt jump [query]` — navigate to an existing worktree by fuzzy branch name (alias: `j`)
+- `wt jump <query>` — navigate to an existing worktree by fuzzy branch name (alias: `j`)
 - fast worktree removal via atomic `rename(2)` to trash + `git worktree prune` (O(1) for large untracked directories)
 - add `remove`, `done`, `prune`, `cleanup`, and `migrate`
 - add `pr` and `mr` flows that resolve branches through `gh` and `glab`
@@ -64,8 +64,8 @@ wt info
 wt config show
 wt config path
 wt config init [--force]
-wt jump [query]
-wt j [query]
+wt jump <query>
+wt j <query>
 wt --format json <command>
 ```
 

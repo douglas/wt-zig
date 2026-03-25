@@ -1,10 +1,21 @@
 # Changelog
 
+## 0.4.1 — 2026-03-25
+
+### Fixed
+
+- Interactive prompts (`checkout`, `remove`, `pr`, `cleanup`) now accept digit input — buffered stderr was not flushed before reading from `/dev/tty`, causing the prompt to appear but keystrokes to be silently dropped
+
+### Changed
+
+- `wt jump` now requires a query argument (per vibe spec); calling it with no arguments now prints a usage error instead of showing an interactive picker of all worktrees
+- `wt jump` prints a creation hint (`hint: run 'wt checkout <query>' to create one`) when no worktree matches the query
+
 ## 0.4.0 — 2026-03-25
 
 ### Added
 
-- `wt jump [query]` (alias `j`) — navigate to an existing worktree by fuzzy branch name; 5-tier matching hierarchy: exact → case-insensitive → word-boundary → substring → fuzzy subsequence; interactive picker when no query given
+- `wt jump <query>` (alias `j`) — navigate to an existing worktree by fuzzy branch name; 5-tier matching hierarchy: exact → case-insensitive → word-boundary → substring → fuzzy subsequence
 - `[copy_files] dirs` config key — CoW-copy directories (e.g. `node_modules`, `target/`) from the main worktree into new worktrees
 - `[copy_files] strategy` config key — pin copy strategy (`native_clone`, `clone`, `rsync`, `standard`); auto-detected from the actual worktree filesystem if omitted; `wt info` shows effective strategy
 - 4-tier copy strategy hierarchy (vibe-inspired): `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink=auto/cp -c) → `rsync` → `standard` (copy_file_range → read+write); each tier falls through to the next on failure
