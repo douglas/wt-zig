@@ -7,6 +7,9 @@ pub const CopyFilesRepoOverride = struct {
 
 pub const CopyFiles = struct {
     paths: []const []const u8 = &.{},
+    /// Directories to copy (CoW when supported: clonefile on APFS, FICLONE on Btrfs/XFS).
+    /// Use for build caches and other git-ignored directories (e.g. node_modules, target/).
+    dirs: []const []const u8 = &.{},
     repo_overrides: []const CopyFilesRepoOverride = &.{},
 };
 

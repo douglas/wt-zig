@@ -29,6 +29,7 @@ pub const ParsedFile = struct {
         freeHookList(allocator, self.hooks.pre_mr);
         freeHookList(allocator, self.hooks.post_mr);
         freeStringList(allocator, self.copy_files.paths);
+        freeStringList(allocator, self.copy_files.dirs);
         for (self.copy_files.repo_overrides) |override| {
             allocator.free(override.repo_name);
             freeStringList(allocator, override.paths);
@@ -69,6 +70,10 @@ pub const default_config_template =
     \\[copy_files]
     \\# Files to copy from the main worktree into each new worktree.
     \\# paths = [".env", "config/local.yml"]
+    \\#
+    \\# Directories to copy using copy-on-write when supported (clonefile on APFS,
+    \\# FICLONE on Btrfs/XFS). Ideal for git-ignored build caches like node_modules.
+    \\# dirs = ["node_modules", ".build", "target"]
     \\#
     \\# Per-repo overrides add extra files when the repo name matches:
     \\# [copy_files.my-project]
@@ -157,6 +162,8 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
                 } else if (std.mem.eql(u8, section, "copy_files")) {
                     if (std.mem.eql(u8, key, "paths")) {
                         parsed.copy_files.paths = items;
+                    } else if (std.mem.eql(u8, key, "dirs")) {
+                        parsed.copy_files.dirs = items;
                     }
                 } else if (std.mem.startsWith(u8, section, "copy_files.")) {
                     if (std.mem.eql(u8, key, "paths")) {

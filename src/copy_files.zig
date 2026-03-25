@@ -1,6 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const config = @import("config.zig");
+const cow_copy = @import("cow_copy.zig");
 const fs = @import("fs.zig");
 
 pub fn copyFiles(
@@ -26,6 +27,7 @@ pub fn copyFiles(
     defer allocator.free(resolved_wt);
 
     copyPaths(allocator, cfg.copy_files.paths, resolved_main, resolved_wt, stderr);
+    copyDirs(allocator, cfg.copy_files.dirs, resolved_main, resolved_wt, stderr);
 
     for (cfg.copy_files.repo_overrides) |override| {
         if (std.mem.eql(u8, override.repo_name, repo_name)) {
@@ -44,6 +46,67 @@ fn copyPaths(
     for (paths) |relative_path| {
         copyOne(allocator, relative_path, resolved_main, resolved_wt, stderr);
     }
+}
+
+fn copyDirs(
+    allocator: std.mem.Allocator,
+    dirs: []const []const u8,
+    resolved_main: []const u8,
+    resolved_wt: []const u8,
+    stderr: *std.Io.Writer,
+) void {
+    for (dirs) |relative_path| {
+        copyOneDir(allocator, relative_path, resolved_main, resolved_wt, stderr);
+    }
+}
+
+fn copyOneDir(
+    allocator: std.mem.Allocator,
+    relative_path: []const u8,
+    resolved_main: []const u8,
+    resolved_wt: []const u8,
+    stderr: *std.Io.Writer,
+) void {
+    // Security: same checks as copyOne — reject absolute paths and traversal.
+    if (std.fs.path.isAbsolute(relative_path)) {
+        stderr.print("warning: copy_files: {s} is an absolute path, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    const source = std.fs.path.join(allocator, &.{ resolved_main, relative_path }) catch return;
+    defer allocator.free(source);
+    const dest = std.fs.path.join(allocator, &.{ resolved_wt, relative_path }) catch return;
+    defer allocator.free(dest);
+
+    const abs_source = std.fs.path.resolve(allocator, &.{source}) catch return;
+    defer allocator.free(abs_source);
+    if (!isChildPath(abs_source, resolved_main)) {
+        stderr.print("warning: copy_files: {s} escapes main worktree, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    const abs_dest = std.fs.path.resolve(allocator, &.{dest}) catch return;
+    defer allocator.free(abs_dest);
+    if (!isChildPath(abs_dest, resolved_wt)) {
+        stderr.print("warning: copy_files: {s} escapes worktree directory, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    // Skip if source does not exist.
+    const stat = std.posix.fstatat(std.fs.cwd().fd, abs_source, 0) catch return;
+    if ((stat.mode & std.posix.S.IFMT) != std.posix.S.IFDIR) {
+        stderr.print("warning: copy_files: {s} is not a directory, skipping\n", .{relative_path}) catch {};
+        return;
+    }
+
+    fs.ensureParentDir(allocator, abs_dest) catch |err| {
+        stderr.print("warning: copy_files: failed to create parent for {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
+        return;
+    };
+
+    cow_copy.copyDir(allocator, abs_source, abs_dest) catch |err| {
+        stderr.print("warning: copy_files: failed to copy dir {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
+    };
 }
 
 fn copyOne(
@@ -81,34 +144,22 @@ fn copyOne(
         return;
     }
 
-    // Security: use lstat (no follow) to detect symlinks atomically,
+    // Security: use lstat (no follow) to detect symlinks and verify regular file,
     // preventing TOCTOU races between check and read.
-    if (isSymlink(abs_source)) {
+    const stat = std.posix.fstatat(std.fs.cwd().fd, abs_source, std.posix.AT.SYMLINK_NOFOLLOW) catch return;
+    if ((stat.mode & std.posix.S.IFMT) == std.posix.S.IFLNK) {
         stderr.print("warning: copy_files: {s} is a symlink, skipping\n", .{relative_path}) catch {};
         return;
     }
-
-    const contents = std.fs.cwd().readFileAlloc(allocator, abs_source, 10 * 1024 * 1024) catch |err| switch (err) {
-        error.FileNotFound => return,
-        else => {
-            stderr.print("warning: copy_files: failed to read {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
-            return;
-        },
-    };
-    defer allocator.free(contents);
+    if ((stat.mode & std.posix.S.IFMT) != std.posix.S.IFREG) return; // not a regular file (missing, dir, etc.)
 
     fs.ensureParentDir(allocator, abs_dest) catch |err| {
         stderr.print("warning: copy_files: failed to create directory for {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
         return;
     };
 
-    const file = std.fs.createFileAbsolute(abs_dest, .{ .truncate = true }) catch |err| {
-        stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
-        return;
-    };
-    defer file.close();
-    file.writeAll(contents) catch |err| {
-        stderr.print("warning: copy_files: failed to write {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
+    cow_copy.copyFile(allocator, abs_source, abs_dest) catch |err| {
+        stderr.print("warning: copy_files: failed to copy {s}: {s}\n", .{ relative_path, @errorName(err) }) catch {};
     };
 }
 
@@ -116,16 +167,6 @@ fn copyOne(
 fn isChildPath(child: []const u8, parent: []const u8) bool {
     if (!std.mem.startsWith(u8, child, parent)) return false;
     return child.len == parent.len or child[parent.len] == std.fs.path.sep;
-}
-
-/// Detect symlinks using lstat (fstatat with SYMLINK_NOFOLLOW) to avoid TOCTOU races.
-fn isSymlink(path: []const u8) bool {
-    if (builtin.os.tag == .windows) {
-        // Windows: fall back to realpath comparison
-        return false;
-    }
-    const stat = std.posix.fstatat(std.fs.cwd().fd, path, std.posix.AT.SYMLINK_NOFOLLOW) catch return false;
-    return (stat.mode & std.posix.S.IFMT) == std.posix.S.IFLNK;
 }
 
 test "copyFiles copies files from main to worktree" {
