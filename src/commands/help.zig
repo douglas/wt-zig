@@ -70,7 +70,6 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  init        Initialize shell integration
         \\  jump        Navigate to a worktree by branch name
         \\  list        List all worktrees
-        \\  overlay     [experimental] OverlayFS workspace on main worktree (Linux)
         \\  migrate     Migrate existing worktrees to configured paths
         \\  mr          Checkout GitLab MR in worktree (uses glab CLI)
         \\  pr          Checkout GitHub PR in worktree (uses gh CLI)

@@ -19,7 +19,6 @@ pub const Kind = enum {
     init,
     done,
     jump,
-    overlay,
 };
 
 pub const Spec = struct {
@@ -194,26 +193,6 @@ pub const all = [_]Spec{
         .summary = "Navigate to an existing worktree by branch name",
         .usage = "wt jump [query]",
         .details = "Find a worktree matching the query using exact, word-boundary, substring, or fuzzy matching, then navigate to it. Without a query, shows an interactive picker.",
-    },
-    .{
-        .kind = .overlay,
-        .name = "overlay",
-        .aliases = &.{},
-        .display = "overlay",
-        .summary = "[experimental, Linux] OverlayFS-backed workspace on top of the main worktree",
-        .usage = "wt overlay <name> | --rm [--keep] <name> | --list",
-        .details =
-        \\Create an OverlayFS workspace that uses the current main worktree as a read-only
-        \\base (lowerdir). All changes go to an upper layer and can be discarded by removing
-        \\the workspace. Requires fuse-overlayfs to be installed.
-        \\
-        \\WARNING: Do not modify the base worktree while an overlay is mounted.
-        \\
-        \\  wt overlay <name>              Create and mount a new workspace
-        \\  wt overlay --rm <name>         Unmount and delete the workspace
-        \\  wt overlay --rm --keep <name>  Unmount but preserve the upper layer
-        \\  wt overlay --list              List tracked workspaces
-        ,
     },
 };
 
