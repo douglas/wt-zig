@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2 — 2026-03-26
+
+### Fixed
+
+- `wt pr` and `wt mr` now print the `gh`/`glab` error message before the generic failure line, making repo-context and auth failures self-explanatory (e.g. "Could not resolve to a PullRequest…")
+
 ## 0.4.1 — 2026-03-25
 
 ### Fixed
