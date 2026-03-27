@@ -85,7 +85,7 @@ pub fn runRemoteCommand(
     const safe_input = prompt.sanitizeForTerminal(allocator, input) catch input;
     defer if (safe_input.ptr != input.ptr) allocator.free(safe_input);
 
-    const resolved = pr_git.resolveBranchName(allocator, remote_type, input) catch |err| switch (err) {
+    const resolved = pr_git.resolveBranchName(allocator, remote_type, input, stderr) catch |err| switch (err) {
         error.InvalidPullRequestInput => {
             if (output.isJson(ctx)) {
                 const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), safe_input });

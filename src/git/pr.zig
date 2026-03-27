@@ -15,13 +15,14 @@ pub fn resolveBranchName(
     allocator: std.mem.Allocator,
     remote_type: RemoteType,
     input: []const u8,
+    stderr: *std.Io.Writer,
 ) !struct { id: []u8, branch: []u8 } {
     const id = try parseIdentifier(allocator, remote_type, input);
     errdefer allocator.free(id);
 
     const branch = try switch (remote_type) {
-        .github => loadGitHubBranchName(allocator, id),
-        .gitlab => loadGitLabBranchName(allocator, id),
+        .github => loadGitHubBranchName(allocator, id, stderr),
+        .gitlab => loadGitLabBranchName(allocator, id, stderr),
     };
 
     return .{
@@ -100,7 +101,7 @@ fn leadingDigits(value: []const u8) []const u8 {
     return value[0..end];
 }
 
-fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
+fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8, stderr: *std.Io.Writer) ![]u8 {
     var result = proc.run(allocator, &.{ "gh", "pr", "view", id, "--json", "headRefName" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
@@ -108,6 +109,8 @@ fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
     defer result.deinit(allocator);
 
     if (!result.succeeded()) {
+        const msg = result.trimmedStderr();
+        if (msg.len > 0) stderr.print("{s}\n", .{msg}) catch {};
         return error.PlatformLookupFailed;
     }
 
@@ -126,7 +129,7 @@ fn loadGitHubBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
     return allocator.dupe(u8, parsed.value.headRefName);
 }
 
-fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
+fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8, stderr: *std.Io.Writer) ![]u8 {
     var result = proc.run(allocator, &.{ "glab", "mr", "view", id, "--output", "json" }) catch |err| switch (err) {
         error.FileNotFound => return error.MissingPlatformCli,
         else => return err,
@@ -134,6 +137,8 @@ fn loadGitLabBranchName(allocator: std.mem.Allocator, id: []const u8) ![]u8 {
     defer result.deinit(allocator);
 
     if (!result.succeeded()) {
+        const msg = result.trimmedStderr();
+        if (msg.len > 0) stderr.print("{s}\n", .{msg}) catch {};
         return error.PlatformLookupFailed;
     }
 
