@@ -219,8 +219,8 @@ pub const all = [_]Spec{
     .{
         .kind = .jump,
         .name = "jump",
-        .aliases = &.{"j"},
-        .display = "jump, j",
+        .aliases = &.{ "j", "cd" },
+        .display = "jump, j, cd",
         .summary = "Navigate to an existing worktree by branch name",
         .usage = "wt jump [query]",
         .details = "Find a worktree matching the query using exact, word-boundary, substring, or fuzzy matching, then navigate to it. Without a query, shows an interactive picker.",
@@ -255,4 +255,9 @@ pub fn find(name: []const u8) ?*const Spec {
 test "find resolves aliases" {
     const spec = find("ls") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqual(Kind.list, spec.kind);
+}
+
+test "find resolves jump cd alias" {
+    const spec = find("cd") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(Kind.jump, spec.kind);
 }

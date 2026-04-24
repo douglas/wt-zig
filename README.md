@@ -17,7 +17,7 @@ This repository is a Zig-native port of [`timvw/wt`](https://github.com/timvw/wt
 - Shell integration with auto-cd functionality
 - Shell completion generation via `wt completion` for bash, zsh, fish, and powershell
 - Optional `gum`-powered interactive UI via `wt ui` for jump/remove flows
-- Additional Zig-port commands: `wt done` and `wt jump` (`wt j`)
+- Additional Zig-port commands: `wt done` and `wt jump` (`wt j`, `wt cd`)
 
 ## Quick Start
 
@@ -62,6 +62,7 @@ wt list
 wt ls
 wt jump feature
 wt j feature
+wt cd feature
 wt ui                              # gum-powered action picker (jump/remove)
 wt ui remove --force               # interactive remove picker with force flag
 wt remove old-branch

@@ -21,7 +21,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `info`
 - `shellenv`
 - `init`
-- `jump` / `j`
+- `jump` / `j` / `cd`
 
 ## Port Complete
 
@@ -31,7 +31,7 @@ The port is complete under the repo's practical-parity standard:
 - `zig build` and `zig build test` pass
 - `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
 - 4-tier copy strategy system: `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink) → `rsync` → `standard`; auto-detected per operation, configurable via `[copy_files] strategy`
-- `wt jump <query>` / `j` for fuzzy worktree navigation
+- `wt jump <query>` / `j` / `cd` for fuzzy worktree navigation
 
 The current accepted baseline on this host is:
 

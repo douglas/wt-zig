@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.5 — 2026-04-24
+
+### Added
+
+- `wt cd <query>` alias for `wt jump <query>`
+
+### Changed
+
+- Updated shell completion command catalogs (standalone `wt completion` and `wt shellenv`) to include the new `cd` alias
+- Refreshed command-surface docs (`README.md`, `docs/port-status.md`) to document `jump` aliases as `j` and `cd`
+
 ## 0.4.4 — 2026-04-24
 
 ### Added

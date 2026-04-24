@@ -1,7 +1,7 @@
 const std = @import("std");
 const output = @import("../output.zig");
 
-const command_words = "checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion";
+const command_words = "checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion";
 
 pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
@@ -107,7 +107,7 @@ fn bashScript() []const u8 {
 fn fishScript() []const u8 {
     return 
     \\# fish completion for wt
-    \\set -l wt_commands checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion
+    \\set -l wt_commands checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion
     \\
     \\complete -c wt -n "__fish_use_subcommand" -a "$wt_commands"
     \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path"
@@ -123,7 +123,7 @@ fn powershellScript() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'ui', 'completion')
+    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'cd', 'ui', 'completion')
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
     \\    if ($position -eq 0) {
@@ -190,6 +190,7 @@ fn zshScript() []const u8 {
     \\        'version:Show version information'
     \\        'jump:Navigate to a worktree by branch name'
     \\        'j:Navigate to a worktree by branch name'
+    \\        'cd:Navigate to a worktree by branch name'
     \\        'ui:Open an interactive worktree UI'
     \\        'completion:Generate shell completion scripts'
     \\    )

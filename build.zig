@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const version = b.option([]const u8, "version", "Version string reported by `wt version`") orelse "0.4.4-dev";
+    const version = b.option([]const u8, "version", "Version string reported by `wt version`") orelse "0.4.5-dev";
 
     const options = b.addOptions();
     options.addOption([]const u8, "version", version);
