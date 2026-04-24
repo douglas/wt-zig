@@ -26,6 +26,13 @@ pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer
 fn unixShellenv() []const u8 {
     return 
     \\wt() {
+    \\    # Avoid wrapping shellenv generation itself through script(1)
+    \\    # to prevent control characters in process substitution output.
+    \\    if [ "$1" = "shellenv" ]; then
+    \\        command wt "$@"
+    \\        return $?
+    \\    fi
+    \\
     \\    # In JSON mode, keep stdout machine-readable and skip auto-navigation.
     \\    case " $* " in
     \\        *" --format json "*|*" --format=json "*)
@@ -34,11 +41,20 @@ fn unixShellenv() []const u8 {
     \\            ;;
     \\    esac
     \\
-    \\    local output exit_code cd_path
-    \\    output=$(command wt "$@")
+    \\    # Use script(1) to provide a PTY for interactive commands.
+    \\    local log_file exit_code cd_path
+    \\    log_file=$(mktemp -t wt.XXXXXX)
+    \\
+    \\    if [ "$(uname)" = "Darwin" ]; then
+    \\        script -q "$log_file" /bin/sh -c 'command wt "$@"' wt "$@"
+    \\    else
+    \\        script -q -c "command wt $*" "$log_file"
+    \\    fi
     \\    exit_code=$?
-    \\    printf '%s\n' "$output"
-    \\    cd_path=$(printf '%s\n' "$output" | grep '^wt navigating to: ' | tail -1 | sed 's/^wt navigating to: //')
+    \\    cd_path=$(grep '^wt navigating to: ' "$log_file" | tail -1 | sed 's/^wt navigating to: //')
+    \\    rm -f "$log_file"
+    \\    cd_path=${cd_path%$'\r'}
+    \\
     \\    if [ $exit_code -eq 0 ] && [ -n "$cd_path" ]; then
     \\        cd "$cd_path"
     \\    fi
@@ -52,7 +68,7 @@ fn unixShellenv() []const u8 {
     \\        COMPREPLY=()
     \\        cur="${COMP_WORDS[COMP_CWORD]}"
     \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
-    \\        commands="checkout co create pr mr list ls remove rm done cleanup migrate prune help shellenv init info config examples version jump j"
+    \\        commands="checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion"
     \\
     \\        if [ $COMP_CWORD -eq 1 ]; then
     \\            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -90,6 +106,7 @@ fn unixShellenv() []const u8 {
     \\            'checkout:Checkout existing branch in new worktree'
     \\            'co:Checkout existing branch in new worktree'
     \\            'create:Create new branch in worktree'
+    \\            'default:Navigate to the main worktree'
     \\            'pr:Checkout GitHub PR in worktree'
     \\            'mr:Checkout GitLab MR in worktree'
     \\            'list:List all worktrees'
@@ -97,6 +114,7 @@ fn unixShellenv() []const u8 {
     \\            'remove:Remove a worktree'
     \\            'rm:Remove a worktree'
     \\            'done:Remove current linked worktree'
+    \\            'status:Show status dashboard of all worktrees'
     \\            'cleanup:Remove worktrees for merged branches'
     \\            'migrate:Migrate existing worktrees to configured paths'
     \\            'prune:Remove worktree administrative files'
@@ -105,9 +123,11 @@ fn unixShellenv() []const u8 {
     \\            'init:Initialize shell integration'
     \\            'info:Show worktree location configuration'
     \\            'config:Manage wt configuration'
+    \\            'examples:Show practical command examples'
     \\            'version:Show version information'
     \\            'jump:Navigate to a worktree by branch name'
     \\            'j:Navigate to a worktree by branch name'
+    \\            'completion:Generate completion script'
     \\        )
     \\
     \\        if (( CURRENT == 2 )); then
@@ -181,7 +201,7 @@ fn powershellShellenv() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j')
+    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'completion')
     \\
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
@@ -245,7 +265,7 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create pr mr list ls remove rm done cleanup migrate prune help shellenv init info config examples version jump j\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion\"") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }

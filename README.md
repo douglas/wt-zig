@@ -1,78 +1,135 @@
-# wt-zig
+# wt-zig - Git Worktree Manager
 
-`wt-zig` is a Zig-native port of [`wt`](https://github.com/timvw/wt), built incrementally instead of as a line-by-line Cobra rewrite. The port is now complete under the repo's practical-parity standard: full command-surface coverage plus no Zig-only failures relative to the Go baseline on the maintained parity harness.
+A fast, simple Git worktree helper written in Zig.
+This repository is a Zig-native port of [`timvw/wt`](https://github.com/timvw/wt), maintained to practical parity with the Go baseline.
 
-The detailed phase history, verification patterns, and completion criteria live in [docs/port-status.md](docs/port-status.md).
-For a practical comparison of the Go and Zig implementations, see [docs/comparison.md](docs/comparison.md).
-For a broader Go vs Rust vs Zig language comparison grounded in real `wt` data, see [docs/language-comparison.md](docs/language-comparison.md).
-For the maintainer-facing architecture and code-quality rules, see [docs/architecture.md](docs/architecture.md).
-For a maintainer onboarding guide aimed at developers ramping from Ruby-style application work into this Zig codebase, see [docs/LEVELUP.md](docs/LEVELUP.md).
+## Features
 
-## Current Scope
+- Configurable worktree strategies: `global`, `sibling-repo`, `parent-branches`, and more
+- Simple commands for common worktree operations
+- Interactive selection menus with fuzzy matching for checkout, remove, pr, and mr commands
+- GitHub PR support via `wt pr` command (uses `gh` CLI)
+- GitLab MR support via `wt mr` command (uses `glab` CLI)
+- Pre/post command hooks for create/checkout/remove/pr/mr
+- Stale worktree detection via `wt cleanup --stale`
+- Status dashboard with per-worktree branch, path, dirty state, and ahead/behind tracking
+- Per-repo `.wt.toml` config overrides
+- Shell integration with auto-cd functionality
+- Shell completion generation via `wt completion` for bash, zsh, fish, and powershell
+- Additional Zig-port commands: `wt done` and `wt jump` (`wt j`)
 
-The current port now covers the full user-facing command surface from `wt`, including text and JSON output modes:
+## Quick Start
 
-- bootstrap a Zig 0.15.2 project
-- provide a native command dispatcher with global `--format <text|json>` support
-- add config loading with defaults, `WT_CONFIG`, `--config`, and env overrides
-- add `wt config init [--force]` to create or replace a starter config file at the resolved path
-- resolve effective worktree patterns from strategy aliases and custom templates
-- add `checkout` and `create` flows on top of the path layer
-- add `wt info` to expose resolved strategy, pattern, root, separator, and hooks
-- run configured pre/post hooks for `checkout`, `create`, `remove`, `pr`, and `mr`
-- copy files from main worktree into new worktrees via `[copy_files]` config, with per-repo overrides
-- copy directories (build caches) via `dirs` under `[copy_files]`; 4-tier copy strategy: `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink=auto) → `rsync` → `standard`; auto-detected from the actual filesystem, configurable via `[copy_files] strategy`
-- warm the OS page/metadata cache after worktree creation in a background thread so subsequent `grep`/`git status` calls are fast
-- `wt jump <query>` — navigate to an existing worktree by fuzzy branch name (alias: `j`)
-- fast worktree removal via atomic `rename(2)` to trash + `git worktree prune` (O(1) for large untracked directories)
-- add `remove`, `done`, `prune`, `cleanup`, and `migrate`
-- surface `done` consistently in root help, `shellenv` completion lists, and `wt examples`
-- add `pr` and `mr` flows that resolve branches through `gh` and `glab`
-- add interactive selectors for `checkout`, `remove`, `pr`, and `mr` in text mode
-- add confirmation prompts for `cleanup` in text mode
-- add `wt examples` to print the full examples catalog in text or JSON form
-- add OS-appropriate `shellenv` output for bash/zsh and PowerShell integration
-- add `init` for bash, zsh, and PowerShell shell-profile installation of the `shellenv` block
-- implement `help`, `version`, and `list`
-- make `list` use `git worktree list --porcelain`
-- expose `wt config show` and `wt config path`, including effective pattern display
-- keep shared JSON/output, prompt, and git helpers factored for future maintenance
+```bash
+zig build
+./zig-out/bin/wt init
+```
 
-Under the current completion bar, that command surface is considered finished when `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline. On this host, the accepted baseline is `Passed: 88`, `Failed: 2`, `Skipped: 4` for both binaries, with the two failing scenarios inherited from the Go baseline.
+## Usage
 
-## Commands
+### Checkout & Create
 
-```text
-wt help
-wt version
+```bash
+# Checkout existing branch in new worktree
+wt checkout feature-branch
+wt co feature-branch
+wt co                             # interactive: fuzzy-search from available branches
+
+# Create new branch in worktree (defaults to main/master as base)
+wt create my-feature
+wt create my-feature develop      # specify base branch
+```
+
+### PRs & MRs
+
+```bash
+# Checkout GitHub PR (requires gh CLI)
+wt pr 123
+wt pr https://github.com/org/repo/pull/123
+wt pr                              # interactive: fuzzy-search from open PRs
+
+# Checkout GitLab MR (requires glab CLI)
+wt mr 123
+wt mr https://gitlab.com/org/repo/-/merge_requests/123
+wt mr                              # interactive: fuzzy-search from open MRs
+```
+
+### List, Navigate & Remove
+
+```bash
 wt list
 wt ls
-wt checkout [branch]
-wt co [branch]
-wt create <branch> [base-branch]
-wt remove [branch] [--force|-f]
-wt rm [branch] [--force|-f]
-wt done [--force|-f]
+wt jump feature
+wt j feature
+wt remove old-branch
+wt rm old-branch
+wt done                            # remove current linked worktree
+```
+
+### Maintenance & Misc
+
+```bash
+wt migrate
+wt migrate --force
+wt cleanup --stale
+wt cleanup --stale --stale-days 7
 wt prune
-wt cleanup [--dry-run] [--force|-f]
-wt migrate [--force|-f]
-wt pr [number|url]
-wt mr [number|url]
+wt completion bash
+wt version
 wt examples
-wt shellenv
-wt init [bash|zsh|powershell] [--dry-run] [--uninstall] [--no-prompt]
+wt --help
+```
+
+### Info & Config
+
+```bash
 wt info
 wt config show
+wt config init
 wt config path
-wt config init [--force]
-wt jump <query>
-wt j <query>
-wt --format json <command>
+# Place a .wt.toml in a repo root to override global config for that repo
 ```
+
+### Status Dashboard
+
+```bash
+wt status
+```
+
+Shows each worktree's branch, path, dirty/clean state, and ahead/behind counts versus upstream.
+
+### JSON Output (`--format json`)
+
+Most commands support machine-readable JSON output:
+
+```bash
+wt --format json version
+wt --format json info
+wt --format json config show
+wt --format json list
+wt --format json examples
+```
+
+In `json` mode, shell integration does not auto-navigate. For commands that normally prompt interactively, pass explicit arguments when using `--format json`.
+
+### Use with Claude Code
+
+This repo includes a local Claude skill plugin at [plugins/wt](plugins/wt/) adapted for `wt-zig`.
+
+## Documentation
+
+| Topic | Description |
+| --- | --- |
+| [Port Status](docs/port-status.md) | Phase history, parity criteria, and verification notes |
+| [Go vs Zig Comparison](docs/comparison.md) | Practical comparison of the Go and Zig implementations |
+| [Go vs Rust vs Zig](docs/language-comparison.md) | Language comparison grounded in real `wt` data |
+| [Architecture](docs/architecture.md) | Maintainer-facing architecture and quality rules |
+| [LEVELUP](docs/LEVELUP.md) | Onboarding guide for contributors |
+| [Claude Skill Plugin](plugins/wt/) | Local Claude skill plugin for wt workflows |
 
 ## Development
 
-```text
+```bash
 zig build
 zig build check
 zig build run -- help
@@ -80,8 +137,22 @@ zig build run -- version
 zig build run -- list
 zig build run -- config show
 zig build test
-zig build release          # stripped ReleaseSmall binary (~271 KB)
+zig build release
 zig build parity
 zig fmt --check .
 ./scripts/parity-harness.sh
 ```
+
+## How It Works
+
+The tool wraps Git's native worktree commands with an organized layout and consistent CLI behavior:
+
+1. Organized structure: keeps worktrees for a repo together
+2. Smart defaults: resolves repo metadata and default branch
+3. Duplicate prevention: avoids creating an already-existing worktree
+4. Auto-cd support: shell integration navigates after create/checkout/jump
+5. JSON mode: emits machine-readable output for automation
+
+## License
+
+GNU Affero General Public License v3.0 (AGPL-3.0-or-later)

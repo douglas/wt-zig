@@ -1,0 +1,39 @@
+skill: wt:wt
+model: haiku
+
+tests:
+  - id: wt-explain
+    prompt: "explain what wt-zig is and how to use it"
+    should_trigger: true
+
+  - id: wt-create-worktree
+    prompt: "how do I create a worktree for a new feature branch?"
+    should_trigger: true
+
+  - id: wt-checkout-pr
+    prompt: "how do I checkout a GitHub PR with wt?"
+    should_trigger: true
+
+  - id: wt-jump
+    prompt: "how do I jump to a worktree by branch name?"
+    should_trigger: true
+
+  - id: wt-done
+    prompt: "what does wt done do?"
+    should_trigger: true
+
+  - id: wt-hooks-env
+    prompt: "how do I set up hooks in wt to copy .env files?"
+    should_trigger: true
+
+  - id: wt-completion
+    prompt: "how do I enable completion for wt in zsh?"
+    should_trigger: true
+
+  - id: unrelated-git-rebase
+    prompt: "how do I rebase my branch?"
+    should_trigger: false
+
+  - id: unrelated-docker
+    prompt: "how do I build a Docker image?"
+    should_trigger: false

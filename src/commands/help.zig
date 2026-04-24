@@ -64,6 +64,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  completion  Generate the autocompletion script for the specified shell
         \\  config      Manage wt configuration
         \\  create      Create new branch in worktree (default: main/master)
+        \\  default     Navigate to the main worktree
         \\  done        Remove current linked worktree
         \\  examples    Show detailed command examples and outcomes
         \\  help        Help about any command
@@ -77,6 +78,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  prune       Remove worktree administrative files
         \\  remove      Remove a worktree
         \\  shellenv    Output shell function for auto-cd (source this)
+        \\  status      Show status dashboard of all worktrees
         \\  version     Show version information
         \\
         \\Flags:

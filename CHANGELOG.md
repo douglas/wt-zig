@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.4 — 2026-04-24
+
+### Added
+
+- `wt completion [bash|zsh|fish|powershell]` command for generating standalone shell completion scripts
+- `wt default` command to navigate to the main worktree
+- `wt status` command parity updates and richer status handling aligned with the Go baseline behavior
+- Local Claude skill plugin at `plugins/wt/skills/wt` adapted to `wt-zig` command surface
+
+### Fixed
+
+- `wt init --uninstall` now falls back to the alternate shell config (`bash`/`zsh`) when shell auto-detection does not match the file where integration was installed
+- Parity harness JSON help comparison now normalizes intentional Zig-only root commands (`done`, `jump`) to avoid false mismatches
+
+### Changed
+
+- README now follows the upstream `wt` layout while documenting Zig-specific behavior and docs links
+- Project license changed to GNU AGPL v3.0 or later (`AGPL-3.0-or-later`)
+
 ## 0.4.3 — 2026-04-24
 
 ### Fixed

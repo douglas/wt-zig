@@ -135,11 +135,26 @@ pub fn checkoutBranch(
 
     var info = try git_repo.getRepoInfoWithWorktrees(allocator, listed.entries);
     defer git_repo.freeRepoInfo(allocator, &info);
+
+    const pre_hook = try std.fmt.allocPrint(allocator, "pre_{s}", .{options.hook_prefix});
+    defer allocator.free(pre_hook);
+    const post_hook = try std.fmt.allocPrint(allocator, "post_{s}", .{options.hook_prefix});
+    defer allocator.free(post_hook);
+
     for (listed.entries) |entry| {
         if (entry.branch) |existing_branch| {
             if (std.mem.eql(u8, existing_branch, branch)) {
+                const existing_path = try allocator.dupe(u8, entry.path);
+                errdefer allocator.free(existing_path);
+
+                var existing_hook_env = try hooks.buildHookEnv(allocator, info, branch, existing_path);
+                defer existing_hook_env.deinit();
+
+                try hooks.runHooks(allocator, pre_hook, hooks.getHooks(cfg, pre_hook), &existing_hook_env, stderr);
+                hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &existing_hook_env, stderr) catch {};
+
                 return .{
-                    .path = try allocator.dupe(u8, entry.path),
+                    .path = existing_path,
                     .existed = true,
                 };
             }
@@ -159,11 +174,6 @@ pub fn checkoutBranch(
 
     const target_path = try path_mod.buildWorktreePath(allocator, cfg, info, branch, &env_map);
     errdefer allocator.free(target_path);
-
-    const pre_hook = try std.fmt.allocPrint(allocator, "pre_{s}", .{options.hook_prefix});
-    defer allocator.free(pre_hook);
-    const post_hook = try std.fmt.allocPrint(allocator, "post_{s}", .{options.hook_prefix});
-    defer allocator.free(post_hook);
 
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
     defer hook_env.deinit();

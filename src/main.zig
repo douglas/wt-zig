@@ -36,8 +36,10 @@ test {
     std.testing.refAllDecls(@import("process.zig"));
     std.testing.refAllDecls(@import("prompt.zig"));
     std.testing.refAllDecls(@import("commands/config.zig"));
+    std.testing.refAllDecls(@import("commands/completion.zig"));
     std.testing.refAllDecls(@import("commands/checkout.zig"));
     std.testing.refAllDecls(@import("commands/create.zig"));
+    std.testing.refAllDecls(@import("commands/default.zig"));
     std.testing.refAllDecls(@import("commands/done.zig"));
     std.testing.refAllDecls(@import("commands/info.zig"));
     std.testing.refAllDecls(@import("commands/init.zig"));
@@ -47,6 +49,7 @@ test {
     std.testing.refAllDecls(@import("commands/remove.zig"));
     std.testing.refAllDecls(@import("commands/cleanup.zig"));
     std.testing.refAllDecls(@import("commands/prune.zig"));
+    std.testing.refAllDecls(@import("commands/status.zig"));
     std.testing.refAllDecls(@import("commands/jump.zig"));
     std.testing.refAllDecls(@import("cow_copy.zig"));
     std.testing.refAllDecls(@import("trash.zig"));

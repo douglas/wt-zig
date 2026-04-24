@@ -34,7 +34,8 @@ pub fn run(
         return 1;
     }
 
-    const config_path = support.shellConfigPath(allocator, shell, &env_map) catch |err| switch (err) {
+    var selected_shell = shell;
+    var config_path = support.shellConfigPath(allocator, selected_shell, &env_map) catch |err| switch (err) {
         error.MissingHomeDirectory => {
             try writeCommandError(ctx, stdout, stderr, "could not determine shell config path: missing HOME");
             return 1;
@@ -44,12 +45,36 @@ pub fn run(
     defer allocator.free(config_path);
 
     if (parsed.uninstall) {
-        const result = try support.removeShellConfig(allocator, config_path, parsed.dry_run);
+        var result = try support.removeShellConfig(allocator, config_path, parsed.dry_run);
+
+        // If shell was auto-detected and no block exists there, try the other
+        // Unix shell config path. This handles environments where $SHELL does
+        // not match the file that was previously initialized.
+        if (parsed.shell == null and result == .not_found and selected_shell != .powershell) {
+            const fallback_shell: Shell = switch (selected_shell) {
+                .bash => .zsh,
+                .zsh => .bash,
+                .powershell => .powershell,
+            };
+            const fallback_path = support.shellConfigPath(allocator, fallback_shell, &env_map) catch null;
+            if (fallback_path) |path| {
+                const fallback_result = try support.removeShellConfig(allocator, path, parsed.dry_run);
+                if (fallback_result != .not_found) {
+                    allocator.free(config_path);
+                    config_path = path;
+                    selected_shell = fallback_shell;
+                    result = fallback_result;
+                } else {
+                    allocator.free(path);
+                }
+            }
+        }
+
         if (output.isJson(ctx)) {
             try output.emitSuccess(ctx, stdout, "wt init", .{
                 .status = if (parsed.dry_run) "planned" else "removed",
                 .operation = "uninstall",
-                .shell = support.shellName(shell),
+                .shell = support.shellName(selected_shell),
                 .config_path = config_path,
                 .dry_run = parsed.dry_run,
             });
@@ -66,7 +91,7 @@ pub fn run(
         try output.emitSuccess(ctx, stdout, "wt init", .{
             .status = if (parsed.dry_run) "planned" else "installed",
             .operation = "install",
-            .shell = support.shellName(shell),
+            .shell = support.shellName(selected_shell),
             .config_path = config_path,
             .dry_run = parsed.dry_run,
         });

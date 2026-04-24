@@ -127,6 +127,10 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
             copy_strategy_source,
         },
     );
+
+    if (cfg.config_repo_found) {
+        try writer.print("Repo config: {s} (found)\n", .{cfg.config_repo_path});
+    }
 }
 
 fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Writer) !void {
@@ -136,11 +140,17 @@ fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.
     const copy_strategy = cfg.copy_files.strategy orelse "auto-detect";
     const copy_strategy_source = if (cfg.copy_files.strategy != null) "config" else "default";
 
+    const repo_config = if (cfg.config_repo_found) .{
+        .path = cfg.config_repo_path,
+        .status = "found",
+    } else null;
+
     try output.emitSuccess(ctx, stdout, "wt config show", .{
         .config_file = .{
             .path = cfg.config_file_path,
             .status = if (cfg.config_file_found) "found" else "not found",
         },
+        .repo_config = repo_config,
         .effective = .{
             .root = .{ .value = cfg.root, .source = cfg.sources.root },
             .strategy = .{ .value = cfg.strategy, .source = cfg.sources.strategy },

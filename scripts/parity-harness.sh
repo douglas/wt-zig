@@ -61,6 +61,14 @@ compare_output() {
   zig_out="$("$WT_ZIG_BIN" "$@" 2>&1)"
   zig_status="$?"
   set -e
+
+  if [[ "$label" == "root json help" || "$label" == "json help" ]]; then
+    # wt-zig intentionally keeps extra root commands (done/jump) for backwards
+    # compatibility. Ignore those two lines when comparing JSON help text.
+    go_out="$(normalize_root_json_help "$go_out")"
+    zig_out="$(normalize_root_json_help "$zig_out")"
+  fi
+
   if [[ "$go_status" != "$zig_status" ]] || [[ "$go_out" != "$zig_out" ]]; then
     echo "!! direct output mismatch: $label"
     echo "go exit: $go_status"
@@ -69,6 +77,12 @@ compare_output() {
     return 1
   fi
   return 0
+}
+
+normalize_root_json_help() {
+  printf '%s' "$1" | sed -E \
+    -e 's/\\n  done        Remove current linked worktree\\n/\\n/g' \
+    -e 's/\\n  jump        Navigate to a worktree by branch name\\n/\\n/g'
 }
 
 collect_failures() {

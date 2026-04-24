@@ -8,12 +8,15 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
     _ = stderr;
 
     const config_status = if (cfg.config_file_found) "found" else "not found, using defaults";
+    const repo_config_status = if (cfg.config_repo_found) "found" else "not found";
     const pattern_info = path.resolvePattern(cfg) catch null;
     const pattern = if (pattern_info) |info| info.pattern else "unknown";
 
     const copy_strategy = cfg.copy_files.strategy orelse "auto-detect";
 
     if (output.isJson(ctx)) {
+        const repo_config_path = if (cfg.config_repo_path.len > 0) cfg.config_repo_path else null;
+        const repo_status = if (cfg.config_repo_path.len > 0) repo_config_status else null;
         try output.emitSuccess(ctx, stdout, "wt info", .{
             .config = .{
                 .path = cfg.config_file_path,
@@ -23,6 +26,8 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
                 .root = cfg.root,
                 .separator = cfg.separator,
                 .copy_strategy = copy_strategy,
+                .repo_config_path = repo_config_path,
+                .repo_config_status = repo_status,
             },
             .strategies = .{
                 .{ .name = "global", .pattern = "{.worktreeRoot}/{.repo.Name}/{.branch}" },
@@ -48,18 +53,21 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
     }
 
     try stdout.print(
-        \\Config:         {s} ({s})
+        \\Config:    {s} ({s})
+        \\Repo cfg:  {s} ({s})
         \\
-        \\Strategy:       {s}
-        \\Pattern:        {s}
-        \\Root:           {s}
-        \\Separator:      "{s}"
-        \\Copy strategy:  {s}
+        \\Strategy:  {s}
+        \\Pattern:   {s}
+        \\Root:      {s}
+        \\Separator: "{s}"
+        \\Copy strategy: {s}
         \\
     ,
         .{
             cfg.config_file_path,
             config_status,
+            if (cfg.config_repo_path.len > 0) cfg.config_repo_path else "(none)",
+            if (cfg.config_repo_path.len > 0) repo_config_status else "not in a git repository",
             cfg.strategy,
             pattern,
             cfg.root,

@@ -355,14 +355,14 @@ const version_examples = [_]UsageExample{
         .purpose = "Print the current wt version for troubleshooting and automation checks.",
         .outcome = "Outputs the wt version string.",
         .exit_code = "0 on success.",
-        .text_example = "wt version 0.4.3",
+        .text_example = "wt version 0.4.4",
     },
     .{
         .command = "wt --format json version",
         .purpose = "Reference machine-readable version output.",
         .outcome = "JSON envelope with data.version.",
         .exit_code = "0 on success.",
-        .json_example = "{\"ok\":true,\"command\":\"wt version\",\"data\":{\"version\":\"0.4.3\"}}",
+        .json_example = "{\"ok\":true,\"command\":\"wt version\",\"data\":{\"version\":\"0.4.4\"}}",
     },
 };
 

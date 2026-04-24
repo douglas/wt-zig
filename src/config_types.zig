@@ -45,6 +45,8 @@ pub const Resolved = struct {
     copy_files: CopyFiles = .{},
     config_file_path: []const u8,
     config_file_found: bool,
+    config_repo_path: []const u8 = "",
+    config_repo_found: bool = false,
     sources: Sources,
 };
 
@@ -70,6 +72,8 @@ pub const testing_defaults = Resolved{
     .hooks = .{},
     .config_file_path = "/tmp/config.toml",
     .config_file_found = false,
+    .config_repo_path = "",
+    .config_repo_found = false,
     .sources = .{
         .root = "default",
         .strategy = "default",

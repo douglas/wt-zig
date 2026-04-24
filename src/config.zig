@@ -43,6 +43,8 @@ pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
         .hooks = .{},
         .config_file_path = config_path,
         .config_file_found = false,
+        .config_repo_path = "",
+        .config_repo_found = false,
         .sources = .{
             .root = "default",
             .strategy = "default",
@@ -56,6 +58,8 @@ pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
         const parsed = try support.parseFile(arena_allocator, config_path);
         try applyParsedFile(arena_allocator, &resolved, parsed, home);
     }
+
+    try applyRepoConfig(arena_allocator, &resolved);
 
     try applyEnvOverrides(arena_allocator, &resolved, env_map);
 
@@ -113,6 +117,76 @@ fn applyEnvOverrides(
         resolved.separator = try allocator.dupe(u8, value);
         resolved.sources.separator = "env: WORKTREE_SEPARATOR";
     }
+}
+
+fn applyRepoConfig(
+    allocator: std.mem.Allocator,
+    resolved: *Resolved,
+) !void {
+    const repo_root = gitRepoRoot(allocator) catch {
+        resolved.config_repo_path = "";
+        resolved.config_repo_found = false;
+        return;
+    };
+
+    const repo_config_path = try std.fs.path.join(allocator, &.{ repo_root, ".wt.toml" });
+    resolved.config_repo_path = repo_config_path;
+    resolved.config_repo_found = false;
+
+    if (!fs.fileExists(repo_config_path) or !isRegularFile(repo_config_path)) {
+        return;
+    }
+
+    resolved.config_repo_found = true;
+    const parsed = try support.parseFile(allocator, repo_config_path);
+
+    if (parsed.strategy) |value| {
+        resolved.strategy = try asciiLowerAlloc(allocator, value);
+        resolved.sources.strategy = "repo config";
+    }
+    if (parsed.pattern) |value| {
+        resolved.pattern = try allocator.dupe(u8, value);
+        resolved.sources.pattern = "repo config";
+    }
+    if (parsed.separator) |value| {
+        resolved.separator = try allocator.dupe(u8, value);
+        resolved.sources.separator = "repo config";
+    }
+
+    mergeHooks(&resolved.hooks, parsed.hooks);
+}
+
+fn mergeHooks(base: *Hooks, overrides: Hooks) void {
+    if (overrides.pre_create.len > 0) base.pre_create = overrides.pre_create;
+    if (overrides.post_create.len > 0) base.post_create = overrides.post_create;
+    if (overrides.pre_checkout.len > 0) base.pre_checkout = overrides.pre_checkout;
+    if (overrides.post_checkout.len > 0) base.post_checkout = overrides.post_checkout;
+    if (overrides.pre_remove.len > 0) base.pre_remove = overrides.pre_remove;
+    if (overrides.post_remove.len > 0) base.post_remove = overrides.post_remove;
+    if (overrides.pre_pr.len > 0) base.pre_pr = overrides.pre_pr;
+    if (overrides.post_pr.len > 0) base.post_pr = overrides.post_pr;
+    if (overrides.pre_mr.len > 0) base.pre_mr = overrides.pre_mr;
+    if (overrides.post_mr.len > 0) base.post_mr = overrides.post_mr;
+}
+
+fn gitRepoRoot(allocator: std.mem.Allocator) ![]const u8 {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "git", "rev-parse", "--show-toplevel" },
+    });
+    defer allocator.free(result.stderr);
+    defer allocator.free(result.stdout);
+
+    switch (result.term) {
+        .Exited => |code| {
+            if (code != 0) return error.NotInGitRepository;
+        },
+        else => return error.NotInGitRepository,
+    }
+
+    const trimmed = std.mem.trim(u8, result.stdout, " \r\n\t");
+    if (trimmed.len == 0) return error.NotInGitRepository;
+    return allocator.dupe(u8, trimmed);
 }
 
 /// Security: verify the config file is a regular file to prevent hangs on FIFOs,
