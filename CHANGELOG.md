@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.6 — 2026-04-24
+
+### Added
+
+- Coverage matrix document at `docs/test-coverage.md` with prioritized next test targets
+- New unit tests for:
+  - root `--format` parse error paths (`MissingFormatValue`, `UnsupportedFormatValue`)
+  - `wt completion` unknown-shell behavior in text and JSON modes
+  - `wt shellenv` JSON-mode success envelope output
+
+### Changed
+
+- README documentation index now links the new test coverage document
+
 ## 0.4.5 — 2026-04-24
 
 ### Added

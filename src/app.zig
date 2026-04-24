@@ -181,3 +181,11 @@ test "parseRootArgs handles format anywhere" {
     try std.testing.expectEqual(output.Format.json, parsed.output_format);
     try std.testing.expectEqualStrings("help", parsed.positional[0]);
 }
+
+test "parseRootArgs rejects missing format value" {
+    try std.testing.expectError(error.MissingFormatValue, parseRootArgs(std.testing.allocator, &.{"--format"}));
+}
+
+test "parseRootArgs rejects unsupported format value" {
+    try std.testing.expectError(error.UnsupportedFormatValue, parseRootArgs(std.testing.allocator, &.{ "--format", "yaml" }));
+}

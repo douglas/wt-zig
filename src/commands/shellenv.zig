@@ -289,3 +289,33 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }
+
+test "shellenv emits json note in json mode" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .json },
+        &.{},
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(0, exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"ok\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt shellenv\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"note\":\"shellenv outputs shell script text; run without --format json to source it\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buffer.items.len);
+}

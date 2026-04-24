@@ -125,6 +125,7 @@ This repo includes a local Claude skill plugin at [plugins/wt](plugins/wt/) adap
 | Topic | Description |
 | --- | --- |
 | [Port Status](docs/port-status.md) | Phase history, parity criteria, and verification notes |
+| [Test Coverage](docs/test-coverage.md) | Coverage matrix and prioritized next test additions |
 | [Go vs Zig Comparison](docs/comparison.md) | Practical comparison of the Go and Zig implementations |
 | [Go vs Rust vs Zig](docs/language-comparison.md) | Language comparison grounded in real `wt` data |
 | [Architecture](docs/architecture.md) | Maintainer-facing architecture and quality rules |
