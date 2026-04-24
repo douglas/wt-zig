@@ -1,7 +1,7 @@
 const std = @import("std");
 const output = @import("../output.zig");
 
-const command_words = "checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion";
+const command_words = "checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion";
 
 pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
@@ -107,12 +107,13 @@ fn bashScript() []const u8 {
 fn fishScript() []const u8 {
     return 
     \\# fish completion for wt
-    \\set -l wt_commands checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion
+    \\set -l wt_commands checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion
     \\
     \\complete -c wt -n "__fish_use_subcommand" -a "$wt_commands"
     \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path"
     \\complete -c wt -n "__fish_seen_subcommand_from checkout co create" -a "(git branch -a --format='%(refname:short)' 2>/dev/null | sed 's#^.*/##' | sort -u)"
     \\complete -c wt -n "__fish_seen_subcommand_from remove rm" -a "(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\\[\\([^]]*\\)\\].*/\\1/p')"
+    \\complete -c wt -n "__fish_seen_subcommand_from ui" -a "jump remove --force -f"
     \\
     ;
 }
@@ -122,7 +123,7 @@ fn powershellScript() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'completion')
+    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'ui', 'completion')
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
     \\    if ($position -eq 0) {
@@ -146,6 +147,10 @@ fn powershellScript() []const u8 {
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
     \\            @('init', 'show', 'path') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'ui') {
+    \\            @('jump', 'remove', '--force', '-f') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        }
@@ -185,6 +190,7 @@ fn zshScript() []const u8 {
     \\        'version:Show version information'
     \\        'jump:Navigate to a worktree by branch name'
     \\        'j:Navigate to a worktree by branch name'
+    \\        'ui:Open an interactive worktree UI'
     \\        'completion:Generate shell completion scripts'
     \\    )
     \\
@@ -206,6 +212,11 @@ fn zshScript() []const u8 {
     \\                local -a config_cmds
     \\                config_cmds=('init:Create a default configuration file' 'show:Show effective configuration with sources' 'path:Print the config file path')
     \\                _describe 'config command' config_cmds
+    \\                ;;
+    \\            ui)
+    \\                local -a ui_cmds
+    \\                ui_cmds=('jump:Select and navigate to a worktree' 'remove:Select and remove a worktree' '--force:Force removal (remove mode)' '-f:Force removal (remove mode)')
+    \\                _describe 'ui mode' ui_cmds
     \\                ;;
     \\            completion)
     \\                local -a shell_cmds

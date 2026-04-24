@@ -79,6 +79,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  remove      Remove a worktree
         \\  shellenv    Output shell function for auto-cd (source this)
         \\  status      Show status dashboard of all worktrees
+        \\  ui          Open an interactive worktree UI (requires gum)
         \\  version     Show version information
         \\
         \\Flags:

@@ -51,6 +51,7 @@ test {
     std.testing.refAllDecls(@import("commands/prune.zig"));
     std.testing.refAllDecls(@import("commands/status.zig"));
     std.testing.refAllDecls(@import("commands/jump.zig"));
+    std.testing.refAllDecls(@import("commands/ui.zig"));
     std.testing.refAllDecls(@import("cow_copy.zig"));
     std.testing.refAllDecls(@import("trash.zig"));
     std.testing.refAllDecls(@import("git/pr.zig"));

@@ -68,7 +68,7 @@ fn unixShellenv() []const u8 {
     \\        COMPREPLY=()
     \\        cur="${COMP_WORDS[COMP_CWORD]}"
     \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
-    \\        commands="checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion"
+    \\        commands="checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion"
     \\
     \\        if [ $COMP_CWORD -eq 1 ]; then
     \\            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -91,6 +91,10 @@ fn unixShellenv() []const u8 {
     \\                ;;
     \\            config)
     \\                COMPREPLY=( $(compgen -W "init show path" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            ui)
+    \\                COMPREPLY=( $(compgen -W "jump remove --force -f" -- "$cur") )
     \\                return 0
     \\                ;;
     \\        esac
@@ -127,6 +131,7 @@ fn unixShellenv() []const u8 {
     \\            'version:Show version information'
     \\            'jump:Navigate to a worktree by branch name'
     \\            'j:Navigate to a worktree by branch name'
+    \\            'ui:Open an interactive worktree UI'
     \\            'completion:Generate completion script'
     \\        )
     \\
@@ -152,6 +157,16 @@ fn unixShellenv() []const u8 {
     \\                        'path:Print the config file path'
     \\                    )
     \\                    _describe 'config command' config_cmds
+    \\                    ;;
+    \\                ui)
+    \\                    local -a ui_cmds
+    \\                    ui_cmds=(
+    \\                        'jump:Select and navigate to a worktree'
+    \\                        'remove:Select and remove a worktree'
+    \\                        '--force:Force removal (remove mode)'
+    \\                        '-f:Force removal (remove mode)'
+    \\                    )
+    \\                    _describe 'ui mode' ui_cmds
     \\                    ;;
     \\            esac
     \\        fi
@@ -201,7 +216,7 @@ fn powershellShellenv() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'completion')
+    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'ui', 'completion')
     \\
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
@@ -226,6 +241,10 @@ fn powershellShellenv() []const u8 {
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
     \\            @('init', 'show', 'path') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'ui') {
+    \\            @('jump', 'remove', '--force', '-f') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        }
@@ -265,7 +284,7 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j completion\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j ui completion\"") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }

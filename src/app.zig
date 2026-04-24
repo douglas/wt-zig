@@ -23,6 +23,7 @@ const shellenv_cmd = @import("commands/shellenv.zig");
 const status_cmd = @import("commands/status.zig");
 const version_cmd = @import("commands/version.zig");
 const jump_cmd = @import("commands/jump.zig");
+const ui_cmd = @import("commands/ui.zig");
 
 pub fn run(
     allocator: std.mem.Allocator,
@@ -96,6 +97,7 @@ pub fn run(
         .shellenv => shellenv_cmd.run(ctx, args[1..], stdout, stderr),
         .init => init_cmd.run(ctx, args[1..], stdout, stderr),
         .jump => jump_cmd.run(ctx, args[1..], stdout, stderr),
+        .ui => ui_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
     };
 }
 

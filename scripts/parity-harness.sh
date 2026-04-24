@@ -82,7 +82,8 @@ compare_output() {
 normalize_root_json_help() {
   printf '%s' "$1" | sed -E \
     -e 's/\\n  done        Remove current linked worktree\\n/\\n/g' \
-    -e 's/\\n  jump        Navigate to a worktree by branch name\\n/\\n/g'
+    -e 's/\\n  jump        Navigate to a worktree by branch name\\n/\\n/g' \
+    -e 's/\\n  ui          Open an interactive worktree UI \(requires gum\)\\n/\\n/g'
 }
 
 collect_failures() {

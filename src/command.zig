@@ -22,6 +22,7 @@ pub const Kind = enum {
     init,
     done,
     jump,
+    ui,
 };
 
 pub const Spec = struct {
@@ -223,6 +224,15 @@ pub const all = [_]Spec{
         .summary = "Navigate to an existing worktree by branch name",
         .usage = "wt jump [query]",
         .details = "Find a worktree matching the query using exact, word-boundary, substring, or fuzzy matching, then navigate to it. Without a query, shows an interactive picker.",
+    },
+    .{
+        .kind = .ui,
+        .name = "ui",
+        .aliases = &.{},
+        .display = "ui",
+        .summary = "Open an interactive worktree UI (requires gum)",
+        .usage = "wt ui [jump|remove] [--force|-f]",
+        .details = "Launch a gum-powered picker to navigate to a worktree or remove linked worktrees with confirmation. Use `wt ui remove --force` to forward force removal.",
     },
 };
 
