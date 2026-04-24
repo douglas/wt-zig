@@ -10,6 +10,7 @@
 
 - Updated shell completion command catalogs (standalone `wt completion` and `wt shellenv`) to include the new `cd` alias
 - Refreshed command-surface docs (`README.md`, `docs/port-status.md`) to document `jump` aliases as `j` and `cd`
+- Updated the local Claude skill plugin (`plugins/wt/skills/wt`) to recognize and document `wt cd` alongside `wt jump`/`wt j`
 
 ## 0.4.4 — 2026-04-24
 

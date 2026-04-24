@@ -18,6 +18,10 @@ tests:
     prompt: "how do I jump to a worktree by branch name?"
     should_trigger: true
 
+  - id: wt-cd-alias
+    prompt: "how do I use wt cd to jump to a worktree?"
+    should_trigger: true
+
   - id: wt-done
     prompt: "what does wt done do?"
     should_trigger: true
