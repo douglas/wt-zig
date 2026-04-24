@@ -116,9 +116,12 @@ wt --format json examples
 
 In `json` mode, shell integration does not auto-navigate. For commands that normally prompt interactively, pass explicit arguments when using `--format json`.
 
-### Use with Claude Code
+### Use with AI Assistants
 
-This repo includes a local Claude skill plugin at [plugins/wt](plugins/wt/) adapted for `wt-zig`.
+This repo includes local skill plugins adapted for `wt-zig`:
+
+- Claude Code plugin: [plugins/wt](plugins/wt/)
+- OpenAI Codex skill: [plugins/codex/skills/wt](plugins/codex/skills/wt/)
 
 ## Documentation
 
@@ -131,6 +134,7 @@ This repo includes a local Claude skill plugin at [plugins/wt](plugins/wt/) adap
 | [Architecture](docs/architecture.md) | Maintainer-facing architecture and quality rules |
 | [LEVELUP](docs/LEVELUP.md) | Onboarding guide for contributors |
 | [Claude Skill Plugin](plugins/wt/) | Local Claude skill plugin for wt workflows |
+| [Codex Skill](plugins/codex/skills/wt/) | Local OpenAI Codex skill for wt workflows |
 
 ## Development
 

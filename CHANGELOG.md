@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.7 — 2026-04-24
+
+### Added
+
+- Local OpenAI Codex skill for `wt-zig` at `plugins/codex/skills/wt` (with trigger tests)
+
+### Changed
+
+- README assistant integration section now documents both Claude and Codex skill paths
+- Build metadata bumped to `0.4.7`
+
 ## 0.4.6 — 2026-04-24
 
 ### Added

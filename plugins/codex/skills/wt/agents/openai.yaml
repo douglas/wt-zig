@@ -1,0 +1,4 @@
+interface:
+  display_name: "wt-zig"
+  short_description: "Guide users through wt-zig worktree workflows"
+  default_prompt: "Use the wt-zig skill to answer worktree workflow questions with concrete wt commands."
