@@ -208,6 +208,11 @@ Commit: `2ee74d4`
 - Reuses `removeWorktree` from `remove.zig` for hooks, git removal, and path cleanup.
 - Emits the `wt navigating to:` marker so shell integration auto-cds back to the project root.
 
+### Phase 18: done discoverability and release build compatibility
+
+- Added `done` to root help, shellenv completion lists, and the examples catalog.
+- Re-enabled `zig build release` by skipping background cache warming in single-threaded builds.
+
 ## Verification Patterns
 
 The port has been verified repeatedly with both unit/build checks and temp-repo smoke tests.
@@ -220,7 +225,7 @@ zig build
 zig build test
 zig build check
 zig build parity
-zig build release          # stripped ReleaseSmall binary (~272 KB)
+zig build release          # stripped ReleaseSmall binary (~271 KB)
 ```
 
 In the Codex sandbox, Zig needs explicit cache locations:
@@ -257,4 +262,3 @@ No intentional feature gaps remain versus the current Go CLI command surface. An
 - platform polish, especially broader Windows/PowerShell verification
 - output-format refinements where the shape is compatible but not byte-for-byte identical
 - chasing down the two current Go-baseline harness failures if they are fixed upstream in [wt](https://github.com/timvw/wt)
-

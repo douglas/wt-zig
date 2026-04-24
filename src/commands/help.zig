@@ -64,6 +64,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  completion  Generate the autocompletion script for the specified shell
         \\  config      Manage wt configuration
         \\  create      Create new branch in worktree (default: main/master)
+        \\  done        Remove current linked worktree
         \\  examples    Show detailed command examples and outcomes
         \\  help        Help about any command
         \\  info        Show worktree location configuration

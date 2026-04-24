@@ -12,7 +12,7 @@ For Go-vs-Zig implementation specifics, see [comparison.md](comparison.md).
 | Test lines | ~11,200 | (inline, 75 test blocks) | — |
 | Source files | 13 impl + 18 test | 35 | ~15–20 est. |
 | External deps | 3 direct, 7 total | 0 | ~5 direct, 40–50 transitive |
-| Binary (stripped) | 4.7 MB | 251 KB | ~1–3 MB est. |
+| Binary (stripped) | 4.7 MB | 271 KB | ~1–3 MB est. |
 | Build (clean) | ~3 s | ~4 s (release) / ~1 s (debug) | ~90–120 s est. |
 | Test count | 258 functions | 75 blocks | — |
 | Error-handling sites | 276 (`if err != nil`) | 909 (`try`) + 29 (`errdefer`) | — |
@@ -24,7 +24,7 @@ All measurements taken on the same Linux host (go 1.26, zig 0.15.2). Rust estima
 | Build | Go | Zig | Rust (est.) |
 |---|---|---|---|
 | Debug / default | 6.9 MB | ~18 MB | ~10–20 MB |
-| Stripped / release | 4.7 MB (`-ldflags="-s -w"`) | 251 KB (`ReleaseSmall`, stripped, single-threaded) | ~1–3 MB (`--release`, stripped) |
+| Stripped / release | 4.7 MB (`-ldflags="-s -w"`) | 271 KB (`ReleaseSmall`, stripped, single-threaded) | ~1–3 MB (`--release`, stripped) |
 
 **Why the differences:**
 
@@ -246,7 +246,7 @@ The Go → Zig port produced several insights that generalize beyond language ch
 | If you want to... | Choose |
 |---|---|
 | Maximize contributor pool | **Go** — widest adoption, easiest onramp |
-| Minimize binary size | **Zig** — 251 KB stripped, no runtime |
+| Minimize binary size | **Zig** — 271 KB stripped, no runtime |
 | Maximize compile-time safety | **Rust** — ownership + borrow checker + exhaustive matching |
 | Minimize dependencies | **Zig** — zero external deps |
 | Fastest iteration cycle | **Go** — fast builds, simple toolchain, GC removes memory management overhead |

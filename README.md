@@ -26,6 +26,7 @@ The current port now covers the full user-facing command surface from `wt`, incl
 - `wt jump <query>` — navigate to an existing worktree by fuzzy branch name (alias: `j`)
 - fast worktree removal via atomic `rename(2)` to trash + `git worktree prune` (O(1) for large untracked directories)
 - add `remove`, `done`, `prune`, `cleanup`, and `migrate`
+- surface `done` consistently in root help, `shellenv` completion lists, and `wt examples`
 - add `pr` and `mr` flows that resolve branches through `gh` and `glab`
 - add interactive selectors for `checkout`, `remove`, `pr`, and `mr` in text mode
 - add confirmation prompts for `cleanup` in text mode
@@ -79,7 +80,7 @@ zig build run -- version
 zig build run -- list
 zig build run -- config show
 zig build test
-zig build release          # stripped ReleaseSmall binary (~251 KB)
+zig build release          # stripped ReleaseSmall binary (~271 KB)
 zig build parity
 zig fmt --check .
 ./scripts/parity-harness.sh

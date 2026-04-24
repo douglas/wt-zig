@@ -65,7 +65,7 @@ Use this sequence locally before shipping changes:
 zig fmt --check .
 zig build check
 zig build parity
-zig build release          # stripped ReleaseSmall binary (~251 KB)
+zig build release          # stripped ReleaseSmall binary (~271 KB)
 ```
 
 `zig build parity` is the reference verification step for behavior changes because it compares the Zig CLI against the Go baseline instead of assuming zero failing scenarios.

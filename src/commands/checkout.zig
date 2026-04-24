@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const config = @import("../config.zig");
 const copy_files = @import("../copy_files.zig");
@@ -176,7 +177,9 @@ pub fn checkoutBranch(
 
     // Warm the OS page/metadata cache in the background so subsequent tool
     // calls (grep, find, git status) are served from memory immediately.
-    if (std.Thread.spawn(.{}, cow_copy.warmDiskCache, .{target_path})) |t| t.detach() else |_| {}
+    if (!builtin.single_threaded) {
+        if (std.Thread.spawn(.{}, cow_copy.warmDiskCache, .{target_path})) |t| t.detach() else |_| {}
+    }
 
     hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
 

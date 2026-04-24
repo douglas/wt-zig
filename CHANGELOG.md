@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.3 — 2026-04-24
+
+### Fixed
+
+- `zig build release` now succeeds again after cache-warming thread work; background warm-up is skipped in single-threaded builds
+- `done` is now fully discoverable in root help, `wt shellenv` completions (bash/zsh/PowerShell), and the `wt examples` catalog
+
 ## 0.4.2 — 2026-03-26
 
 ### Fixed

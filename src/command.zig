@@ -128,7 +128,7 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "migrate",
         .summary = "Migrate existing worktrees to the configured path strategy",
-        .usage = "wt migrate [--force]",
+        .usage = "wt migrate [--force|-f]",
         .details = "Move linked worktrees into their configured locations and move the primary checkout back under ~/src when it currently lives inside WORKTREE_ROOT.",
     },
     .{

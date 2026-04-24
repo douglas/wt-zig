@@ -167,6 +167,29 @@ const remove_examples = [_]UsageExample{
     },
 };
 
+const done_examples = [_]UsageExample{
+    .{
+        .command = "wt done",
+        .purpose = "Remove the linked worktree for your current directory and navigate back.",
+        .outcome = "The current linked worktree is removed and text mode emits a navigate_to marker for the main checkout.",
+        .exit_code = "0 on success; non-zero if run outside a linked worktree or if removal fails.",
+        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/feature-branch\nwt navigating to: <main-worktree-path>",
+        .preconditions = &.{"Run inside a linked (non-main) worktree."},
+        .failure_modes = &.{
+            "Running in the main checkout is rejected.",
+            "Detached HEAD worktrees are rejected because there is no branch to remove.",
+        },
+        .follow_up = &.{"wt list"},
+    },
+    .{
+        .command = "wt --format json done --force",
+        .purpose = "Reference machine-readable current-worktree removal output.",
+        .outcome = "JSON envelope with removed branch/path and navigate_to target.",
+        .exit_code = "0 on success; non-zero on failure.",
+        .json_example = "{\"ok\":true,\"command\":\"wt done\",\"data\":{\"status\":\"removed\",\"branch\":\"feature-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/feature-branch\",\"navigate_to\":\"<main-worktree-path>\"}}",
+    },
+};
+
 const cleanup_examples = [_]UsageExample{
     .{
         .command = "wt cleanup --dry-run",
@@ -332,14 +355,14 @@ const version_examples = [_]UsageExample{
         .purpose = "Print the current wt version for troubleshooting and automation checks.",
         .outcome = "Outputs the wt version string.",
         .exit_code = "0 on success.",
-        .text_example = "wt version 0.1.0",
+        .text_example = "wt version 0.4.3",
     },
     .{
         .command = "wt --format json version",
         .purpose = "Reference machine-readable version output.",
         .outcome = "JSON envelope with data.version.",
         .exit_code = "0 on success.",
-        .json_example = "{\"ok\":true,\"command\":\"wt version\",\"data\":{\"version\":\"0.1.0\"}}",
+        .json_example = "{\"ok\":true,\"command\":\"wt version\",\"data\":{\"version\":\"0.4.3\"}}",
     },
 };
 
@@ -348,6 +371,7 @@ const topics = [_]Topic{
     .{ .name = "cleanup", .description = "Remove worktrees for merged branches", .examples = &cleanup_examples },
     .{ .name = "config", .description = "Manage configuration file", .examples = &config_examples },
     .{ .name = "create", .description = "Create a new branch in a worktree", .examples = &create_examples },
+    .{ .name = "done", .description = "Remove the current linked worktree", .examples = &done_examples },
     .{ .name = "examples", .description = "Show detailed command examples and outcomes", .examples = &examples_examples },
     .{ .name = "info", .description = "Show active worktree placement configuration", .examples = &info_examples },
     .{ .name = "init", .description = "Initialize shell integration", .examples = &init_examples },
@@ -479,6 +503,7 @@ test "examples text includes catalog topics and json note" {
     try adapted.new_interface.flush();
 
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "checkout: Checkout an existing branch in a worktree") != null);
+    try std.testing.expect(std.mem.indexOf(u8, buffer.items, "done: Remove the current linked worktree") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "examples: Show detailed command examples and outcomes") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "--format json output is machine-readable and does not auto-navigate your shell.") != null);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "wt --format json create my-feature") != null);
