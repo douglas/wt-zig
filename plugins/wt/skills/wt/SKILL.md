@@ -1,6 +1,7 @@
 ---
 name: wt
 description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt jump', 'wt j', 'wt cd', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
+description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt jump', 'wt j', 'wt cd', 'wt ui', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
 ---
 
 # Working with wt-zig - Git Worktree Manager
@@ -23,6 +24,7 @@ Never switch branches in the main checkout. Create a worktree per task to keep t
 | `wt rm` | Interactive worktree picker in text mode |
 | `wt done [--force]` | Remove current linked worktree |
 | `wt jump <query>` / `wt j <query>` / `wt cd <query>` | Navigate to a worktree by fuzzy branch name |
+| `wt ui [jump\|remove] [--force]` | Open gum-powered interactive worktree UI |
 | `wt pr [number\|url]` | Checkout a GitHub PR (requires `gh` CLI) |
 | `wt mr [number\|url]` | Checkout a GitLab MR (requires `glab` CLI) |
 | `wt status` | Overview of all worktrees (branch/path/dirty/ahead-behind) |
@@ -109,5 +111,6 @@ wt rm feat/my-feature
 
 - Prefer `wt create` or `wt co` over branch switching in main checkout
 - Use `wt ls` / `wt status` to inspect worktree state before destructive operations
+- Use `wt ui` for interactive jump/remove flows when `gum` is installed
 - For PR/MR flows, prefer `wt pr` / `wt mr` when `gh` / `glab` are available
 - For non-interactive agent flows, pass explicit arguments (avoid relying on prompts)

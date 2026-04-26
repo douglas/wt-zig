@@ -63,8 +63,8 @@ compare_output() {
   set -e
 
   if [[ "$label" == "root json help" || "$label" == "json help" ]]; then
-    # wt-zig intentionally keeps extra root commands (done/jump) for backwards
-    # compatibility. Ignore those two lines when comparing JSON help text.
+    # wt-zig intentionally keeps extra root commands (done/jump/ui) for
+    # backwards compatibility. Ignore those lines when comparing JSON help text.
     go_out="$(normalize_root_json_help "$go_out")"
     zig_out="$(normalize_root_json_help "$zig_out")"
   fi

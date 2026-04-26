@@ -45,7 +45,7 @@ pub fn run(
         return 1;
     }
 
-    const mode = parsed.mode orelse ((chooseMode(ctx.allocator, stderr) catch |err| switch (err) {
+    const mode = parsed.mode orelse ((chooseMode(ctx.allocator) catch |err| switch (err) {
         error.GumNotFound => {
             try stderr.writeAll("gum is required for wt ui. Install gum and try again.\n");
             return 1;
@@ -96,11 +96,19 @@ fn runJumpUi(allocator: std.mem.Allocator, stdout: *std.Io.Writer, stderr: *std.
             try stderr.writeAll("gum is required for wt ui. Install gum and try again.\n");
             return 1;
         },
+        error.SelectionCancelled => {
+            try stderr.writeAll("selection cancelled\n");
+            return 1;
+        },
+        error.GumCommandFailed => {
+            try stderr.writeAll("gum failed while selecting a worktree\n");
+            return 1;
+        },
         else => return err,
     };
     defer if (selected) |value| allocator.free(value);
     if (selected == null) {
-        try stderr.writeAll("selection cancelled\n");
+        try stderr.writeAll("no selection returned\n");
         return 1;
     }
 
@@ -161,11 +169,19 @@ fn runRemoveUi(
             try stderr.writeAll("gum is required for wt ui. Install gum and try again.\n");
             return 1;
         },
+        error.SelectionCancelled => {
+            try stderr.writeAll("selection cancelled\n");
+            return 1;
+        },
+        error.GumCommandFailed => {
+            try stderr.writeAll("gum failed while selecting a worktree\n");
+            return 1;
+        },
         else => return err,
     };
     defer if (selected) |value| allocator.free(value);
     if (selected == null) {
-        try stderr.writeAll("selection cancelled\n");
+        try stderr.writeAll("no selection returned\n");
         return 1;
     }
 
@@ -208,8 +224,7 @@ fn displayBranch(entry: worktree.Entry) []const u8 {
     return "(main)";
 }
 
-fn chooseMode(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !?Mode {
-    _ = stderr;
+fn chooseMode(allocator: std.mem.Allocator) !?Mode {
     var options = std.ArrayList(Choice).empty;
     defer {
         for (options.items) |item| allocator.free(item.label);
@@ -228,7 +243,10 @@ fn chooseMode(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !?Mode {
         .value = "quit",
     });
 
-    const selected = try gumChoose(allocator, "wt ui action", options.items);
+    const selected = gumChoose(allocator, "wt ui action", options.items) catch |err| switch (err) {
+        error.SelectionCancelled => return null,
+        else => return err,
+    };
     defer if (selected) |value| allocator.free(value);
     if (selected == null) return null;
 
@@ -275,8 +293,11 @@ fn gumChoose(allocator: std.mem.Allocator, header: []const u8, choices: []const 
             const trimmed = std.mem.trim(u8, result.stdout, " \r\n\t");
             if (trimmed.len == 0) break :blk null;
             break :blk try allocator.dupe(u8, trimmed);
-        } else null,
-        else => null,
+        } else if (code == 130)
+            error.SelectionCancelled
+        else
+            error.GumCommandFailed,
+        else => error.GumCommandFailed,
     };
 }
 
@@ -305,6 +326,11 @@ fn runGumCaptureStdout(allocator: std.mem.Allocator, argv: []const []const u8) !
     child.stderr_behavior = .Inherit;
 
     try child.spawn();
+    errdefer {
+        _ = child.kill() catch {};
+        _ = child.wait() catch {};
+    }
+
     const captured = try child.stdout.?.readToEndAlloc(allocator, 64 * 1024);
     errdefer allocator.free(captured);
     const term = try child.wait();

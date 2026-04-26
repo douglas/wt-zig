@@ -10,16 +10,19 @@ This document compares the original Go implementation ([`wt`](https://github.com
 - `zig build` and `zig build test` pass
 - `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
 
-On the maintained Linux host baseline, both implementations currently report:
+On the maintained Linux host baseline, the latest parity run (2026-04-25) reports:
 
-- `Passed: 88`
-- `Failed: 2`
-- `Skipped: 4`
+- Go harness: `Passed: 95`, `Failed: 3`, `Skipped: 4`
+- Zig harness: `Passed: 97`, `Failed: 1`, `Skipped: 4`
 
-The two remaining failures are inherited from the Go baseline in this environment and are not treated as open `wt-zig` regressions:
+The shared remaining failure is inherited from the Go baseline in this environment and is not treated as an open `wt-zig` regression:
 
 - `config/config_show_defaults`
-- `init/init_uninstall`
+
+The current Go-only failures in this environment are:
+
+- `status/status_shows_worktree_branch`
+- `status/status_shows_dirty_state`
 
 ## High-Level Difference
 
@@ -44,6 +47,8 @@ The Zig version is a native port with the same practical feature set, but it use
 The Zig version also includes features not present in Go `wt`:
 
 - `wt done [--force|-f]` — remove the current linked worktree and navigate back to the project root, without needing to name the branch or use an interactive selector
+- `wt jump <query>` / `wt j <query>` — fuzzy navigation to a linked worktree by branch name
+- `wt ui [jump|remove] [--force|-f]` — gum-powered interactive jump/remove UI
 
 The later maintenance passes made that Zig advantage more concrete:
 

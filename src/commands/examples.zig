@@ -190,6 +190,43 @@ const done_examples = [_]UsageExample{
     },
 };
 
+const ui_examples = [_]UsageExample{
+    .{
+        .command = "wt ui",
+        .purpose = "Open an interactive gum-powered action picker for jump/remove workflows.",
+        .outcome = "Shows a mode picker, then either navigates to a selected worktree or removes a selected linked worktree after confirmation.",
+        .exit_code = "0 on successful action; non-zero if gum is missing, selection is cancelled, or action fails.",
+        .text_example = "wt ui action\n  jump\n  remove\n  quit",
+        .preconditions = &.{
+            "gum must be installed and available on PATH.",
+            "Run in a git repository with one or more worktrees.",
+        },
+        .failure_modes = &.{
+            "gum missing: prints install hint and exits non-zero.",
+            "Selection cancelled or gum interaction failure exits non-zero.",
+        },
+        .follow_up = &.{ "wt list", "wt status" },
+    },
+    .{
+        .command = "wt ui remove --force",
+        .purpose = "Interactively pick a linked worktree and force-remove it.",
+        .outcome = "Prompts for branch selection and confirmation, then calls the standard remove flow with --force.",
+        .exit_code = "0 on success; non-zero on cancellation or remove failure.",
+        .text_example = "Select worktree to remove\nRemove worktree for branch feature-x?\nRemoved worktree: $WORKTREE_ROOT/<repo>/feature-x",
+        .failure_modes = &.{
+            "No linked worktrees available for removal.",
+            "Removal rejected by git despite --force (e.g., path errors).",
+        },
+    },
+    .{
+        .command = "wt --format json ui",
+        .purpose = "Show explicit non-JSON behavior contract for the interactive UI.",
+        .outcome = "JSON error envelope explaining that wt ui must be run without --format json.",
+        .exit_code = "1 (interactive-only command).",
+        .json_example = "{\"ok\":false,\"command\":\"wt ui\",\"error\":\"wt ui is interactive; run without --format json\"}",
+    },
+};
+
 const cleanup_examples = [_]UsageExample{
     .{
         .command = "wt cleanup --dry-run",
@@ -382,6 +419,7 @@ const topics = [_]Topic{
     .{ .name = "prune", .description = "Remove stale worktree administrative files", .examples = &prune_examples },
     .{ .name = "remove", .description = "Remove a worktree", .examples = &remove_examples },
     .{ .name = "shellenv", .description = "Output shell wrapper for auto-navigation and completion", .examples = &shellenv_examples },
+    .{ .name = "ui", .description = "Open interactive gum-powered worktree UI", .examples = &ui_examples },
     .{ .name = "version", .description = "Show wt version", .examples = &version_examples },
 };
 

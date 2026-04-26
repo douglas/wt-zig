@@ -63,7 +63,7 @@ wt ls
 wt jump feature
 wt j feature
 wt cd feature
-wt ui                              # gum-powered action picker (jump/remove)
+wt ui                              # gum-powered action picker (jump/remove; requires gum)
 wt ui remove --force               # interactive remove picker with force flag
 wt remove old-branch
 wt rm old-branch

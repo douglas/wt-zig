@@ -97,6 +97,10 @@ fn bashScript() []const u8 {
     \\            COMPREPLY=( $(compgen -W "init show path" -- "$cur") )
     \\            return 0
     \\            ;;
+    \\        ui)
+    \\            COMPREPLY=( $(compgen -W "jump remove --force -f" -- "$cur") )
+    \\            return 0
+    \\            ;;
     \\    esac
     \\}
     \\complete -F _wt_complete wt
@@ -282,6 +286,8 @@ test "completion bash script contains completer" {
     try stdout_adapted.new_interface.flush();
     try std.testing.expectEqual(0, exit_code);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "ui)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "jump remove --force -f") != null);
 }
 
 test "completion reports unknown shell in text mode" {

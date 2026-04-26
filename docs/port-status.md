@@ -6,12 +6,15 @@ This document is the durable handoff for the Zig port of [`wt`](https://github.c
 
 The port is intentionally incremental, not a line-by-line Cobra rewrite. The current Zig CLI now covers the full current `wt` command surface in both text mode and the global `--format json` mode:
 
-- `help`, `version`, `list`
+- `help`, `version`, `list`, `status`, `default`
 - `config show`, `config path`, `config init`
+- `completion`
 - `checkout` / `co`
 - `create`
 - `remove` / `rm`
 - `done`
+- `jump` / `j` / `cd`
+- `ui`
 - `prune`
 - `cleanup`
 - `migrate`
@@ -21,7 +24,6 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `info`
 - `shellenv`
 - `init`
-- `jump` / `j` / `cd`
 
 ## Port Complete
 
@@ -32,16 +34,21 @@ The port is complete under the repo's practical-parity standard:
 - `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
 - 4-tier copy strategy system: `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink) → `rsync` → `standard`; auto-detected per operation, configurable via `[copy_files] strategy`
 - `wt jump <query>` / `j` / `cd` for fuzzy worktree navigation
+- `wt ui [jump|remove] [--force|-f]` for gum-powered interactive jump/remove flows
 
-The current accepted baseline on this host is:
+The current accepted baseline on this host (latest run: 2026-04-25) is:
 
-- Go harness result: `Passed: 88`, `Failed: 2`, `Skipped: 4`
-- Zig harness result: `Passed: 88`, `Failed: 2`, `Skipped: 4`
+- Go harness result: `Passed: 95`, `Failed: 3`, `Skipped: 4`
+- Zig harness result: `Passed: 97`, `Failed: 1`, `Skipped: 4`
 
-The two remaining failing scenarios are inherited from the Go baseline in this environment and are not treated as open `wt-zig` gaps:
+The remaining shared failing scenario is inherited from the Go baseline in this environment and is not treated as an open `wt-zig` gap:
 
 - `config/config_show_defaults`
-- `init/init_uninstall`
+
+Current Go-only failures in this environment:
+
+- `status/status_shows_worktree_branch`
+- `status/status_shows_dirty_state`
 
 ## Implemented Architecture
 
@@ -198,8 +205,9 @@ Commit: `2ee74d4`
 - Fixed a lifetime bug in remote-derived repo metadata so parsed `origin` host/owner/name values no longer point into freed buffers.
 - Tightened prompt behavior around `WT_USE_STDIN=1`, raw numeric selection, and cancellation semantics to better match the Go prompt layer.
 - Fixed remaining parity mismatches in `checkout` fetch fallback, `cleanup --force` wording, `help` JSON command paths, and `examples` output/argument rejection.
-- Verified the full Go scenario suite now matches the Go baseline exactly in this environment: both binaries report `Passed: 88`, `Failed: 2`, `Skipped: 4`.
-- The two remaining harness failures are inherited from the Go baseline here: `config/config_show_defaults` and `init/init_uninstall`.
+- Verified `wt-zig` maintains harness parity with no Zig-only failures relative to the Go baseline.
+- Current baseline snapshot in this environment: Go `Passed: 95`, `Failed: 3`, `Skipped: 4`; Zig `Passed: 97`, `Failed: 1`, `Skipped: 4`.
+- Shared failure: `config/config_show_defaults`; current Go-only failures: `status/status_shows_worktree_branch`, `status/status_shows_dirty_state`.
 
 ### Phase 17: done command
 
@@ -261,4 +269,4 @@ No intentional feature gaps remain versus the current Go CLI command surface. An
 - bug-fix parity where Zig behavior diverges from Go in edge cases
 - platform polish, especially broader Windows/PowerShell verification
 - output-format refinements where the shape is compatible but not byte-for-byte identical
-- chasing down the two current Go-baseline harness failures if they are fixed upstream in [wt](https://github.com/timvw/wt)
+- tracking current Go-baseline harness failures as upstream changes land in [wt](https://github.com/timvw/wt)
