@@ -1,6 +1,6 @@
 ---
 name: wt
-description: "Use this skill when the user asks about `wt`, git worktrees, or commands like `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt jump` (`wt j`, `wt cd`), `wt pr`, `wt mr`, `wt status`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
+description: "Use this skill when the user asks about `wt`, git worktrees, or commands like `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt jump` (`wt j`, `wt cd`), `wt ui`, `wt pr`, `wt mr`, `wt status`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
 ---
 
 # wt-zig Skill for Codex
@@ -21,6 +21,8 @@ description: "Use this skill when the user asks about `wt`, git worktrees, or co
 - `wt list` / `wt ls`
 - `wt jump <query>` / `wt j <query>` / `wt cd <query>`
 - `wt remove <branch>` / `wt rm <branch>`
+- `wt rm` (interactive remove picker; gum-first with text fallback)
+- `wt ui [jump|remove] [--force|-f]` (gum-powered action picker)
 - `wt done [--force]`
 - `wt pr [number|url]`
 - `wt mr [number|url]`
@@ -54,4 +56,5 @@ wt --format json version
 - Prefer `wt create`/`wt co` over branch switching in the main checkout.
 - Use `wt ls` or `wt status` before removal/cleanup operations.
 - In non-interactive contexts, pass explicit arguments instead of relying on prompts.
+- If `gum` is installed, prefer `wt rm` or `wt ui` for interactive remove/jump workflows.
 - If the user asks for navigation behavior, mention shell integration (`wt init`, `wt shellenv`) and aliases (`wt j`, `wt cd`).

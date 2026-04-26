@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.8 — 2026-04-26
+
+### Added
+
+- Codex wt skill coverage for `wt ui` and `wt rm` without arguments at `plugins/codex/skills/wt` (documentation + trigger tests)
+
+### Changed
+
+- `wt rm` without arguments now opens the gum-based remove picker when `gum` is installed, and falls back to text-mode selection otherwise
+- Build metadata bumped to `0.4.8`
+- Release workflow AUR metadata now emits `AGPL-3.0-or-later` in generated `.SRCINFO`
+
 ## 0.4.7 — 2026-04-24
 
 ### Added

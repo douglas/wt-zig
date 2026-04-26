@@ -149,7 +149,7 @@ jobs:
             "	pkgrel = 1" \
             "	url = https://github.com/douglas/wt-zig" \
             "	arch = x86_64" \
-            "	license = MIT" \
+            "	license = AGPL-3.0-or-later" \
             "	makedepends = zig" \
             "	depends = glibc" \
             "	depends = git" \

@@ -26,6 +26,14 @@ tests:
     prompt: "what does wt done do?"
     should_trigger: true
 
+  - id: wt-ui
+    prompt: "can wt open an interactive picker to jump or remove worktrees?"
+    should_trigger: true
+
+  - id: wt-rm-interactive
+    prompt: "what happens if I run wt rm without any arguments?"
+    should_trigger: true
+
   - id: wt-hooks-env
     prompt: "how do I set up hooks in wt to copy .env files?"
     should_trigger: true

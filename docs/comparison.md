@@ -12,7 +12,7 @@ This document compares the original Go implementation ([`wt`](https://github.com
 
 On the maintained Linux host baseline, the latest parity run (2026-04-25) reports:
 
-- Go harness: `Passed: 95`, `Failed: 3`, `Skipped: 4`
+- Go harness: `Passed: 94`, `Failed: 4`, `Skipped: 4`
 - Zig harness: `Passed: 97`, `Failed: 1`, `Skipped: 4`
 
 The shared remaining failure is inherited from the Go baseline in this environment and is not treated as an open `wt-zig` regression:
@@ -21,6 +21,7 @@ The shared remaining failure is inherited from the Go baseline in this environme
 
 The current Go-only failures in this environment are:
 
+- `init/init_uninstall`
 - `status/status_shows_worktree_branch`
 - `status/status_shows_dirty_state`
 

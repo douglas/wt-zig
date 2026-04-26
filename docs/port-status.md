@@ -38,7 +38,7 @@ The port is complete under the repo's practical-parity standard:
 
 The current accepted baseline on this host (latest run: 2026-04-25) is:
 
-- Go harness result: `Passed: 95`, `Failed: 3`, `Skipped: 4`
+- Go harness result: `Passed: 94`, `Failed: 4`, `Skipped: 4`
 - Zig harness result: `Passed: 97`, `Failed: 1`, `Skipped: 4`
 
 The remaining shared failing scenario is inherited from the Go baseline in this environment and is not treated as an open `wt-zig` gap:
@@ -47,6 +47,7 @@ The remaining shared failing scenario is inherited from the Go baseline in this 
 
 Current Go-only failures in this environment:
 
+- `init/init_uninstall`
 - `status/status_shows_worktree_branch`
 - `status/status_shows_dirty_state`
 
@@ -206,8 +207,8 @@ Commit: `2ee74d4`
 - Tightened prompt behavior around `WT_USE_STDIN=1`, raw numeric selection, and cancellation semantics to better match the Go prompt layer.
 - Fixed remaining parity mismatches in `checkout` fetch fallback, `cleanup --force` wording, `help` JSON command paths, and `examples` output/argument rejection.
 - Verified `wt-zig` maintains harness parity with no Zig-only failures relative to the Go baseline.
-- Current baseline snapshot in this environment: Go `Passed: 95`, `Failed: 3`, `Skipped: 4`; Zig `Passed: 97`, `Failed: 1`, `Skipped: 4`.
-- Shared failure: `config/config_show_defaults`; current Go-only failures: `status/status_shows_worktree_branch`, `status/status_shows_dirty_state`.
+- Current baseline snapshot in this environment: Go `Passed: 94`, `Failed: 4`, `Skipped: 4`; Zig `Passed: 97`, `Failed: 1`, `Skipped: 4`.
+- Shared failure: `config/config_show_defaults`; current Go-only failures: `init/init_uninstall`, `status/status_shows_worktree_branch`, `status/status_shows_dirty_state`.
 
 ### Phase 17: done command
 
