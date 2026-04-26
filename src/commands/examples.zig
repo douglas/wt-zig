@@ -158,6 +158,16 @@ const remove_examples = [_]UsageExample{
         .follow_up = &.{"wt list"},
     },
     .{
+        .command = "wt rm",
+        .purpose = "Interactively select and remove a linked worktree.",
+        .outcome = "Uses the gum-based picker and confirmation flow when available; otherwise falls back to text-mode selection.",
+        .exit_code = "0 on success; non-zero on cancellation or remove failure.",
+        .text_example = "Select worktree to remove\nRemove worktree for branch old-branch?\nRemoved worktree: $WORKTREE_ROOT/<repo>/old-branch",
+        .preconditions = &.{"At least one linked (non-main) worktree exists."},
+        .failure_modes = &.{ "No linked worktrees available.", "Selection cancelled.", "gum interaction failure when gum is installed." },
+        .follow_up = &.{"wt list"},
+    },
+    .{
         .command = "wt --format json remove old-branch",
         .purpose = "Reference machine-readable removal flow.",
         .outcome = "JSON envelope with removed path and navigate_to target.",

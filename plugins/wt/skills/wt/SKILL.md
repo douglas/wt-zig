@@ -1,6 +1,5 @@
 ---
 name: wt
-description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt jump', 'wt j', 'wt cd', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
 description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt jump', 'wt j', 'wt cd', 'wt ui', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
 ---
 
@@ -21,7 +20,7 @@ Never switch branches in the main checkout. Create a worktree per task to keep t
 | `wt co` | Interactive branch picker in text mode |
 | `wt list` / `wt ls` | List all worktrees |
 | `wt remove <branch>` / `wt rm <branch>` | Remove a worktree |
-| `wt rm` | Interactive worktree picker in text mode |
+| `wt rm` | Interactive remove picker (gum UI when available, text fallback otherwise) |
 | `wt done [--force]` | Remove current linked worktree |
 | `wt jump <query>` / `wt j <query>` / `wt cd <query>` | Navigate to a worktree by fuzzy branch name |
 | `wt ui [jump\|remove] [--force]` | Open gum-powered interactive worktree UI |

@@ -19,6 +19,11 @@ const ParsedArgs = struct {
     force: bool = false,
 };
 
+const GumChoice = struct {
+    label: []u8,
+    value: []u8,
+};
+
 pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
@@ -37,6 +42,8 @@ pub fn run(
         for (branches) |candidate| allocator.free(candidate);
         allocator.free(branches);
     };
+    var owned_selected_branch: ?[]u8 = null;
+    defer if (owned_selected_branch) |selected| allocator.free(selected);
 
     if (branch == null) {
         if (output.isJson(ctx)) {
@@ -44,27 +51,72 @@ pub fn run(
             return 1;
         }
 
-        const branches = git_repo.getExistingWorktreeBranches(allocator) catch {
-            try stderr.writeAll("failed to get worktrees\n");
-            return 1;
-        };
-        owned_branches = branches;
-        if (branches.len == 0) {
-            try stderr.writeAll("no worktrees to remove\n");
-            return 1;
-        }
+        if (try gumAvailable(allocator)) {
+            const selected = chooseRemoveBranchWithGum(allocator, stderr) catch |err| switch (err) {
+                error.SelectionCancelled => {
+                    try stderr.writeAll("selection cancelled\n");
+                    return 1;
+                },
+                error.GumCommandFailed => {
+                    try stderr.writeAll("gum failed while selecting a worktree\n");
+                    return 1;
+                },
+                error.GitCommandFailed => {
+                    try stderr.writeAll("failed to get worktrees\n");
+                    return 1;
+                },
+                error.GumNotFound => {
+                    try stderr.writeAll("gum is required for this remove UI flow. Install gum and try again.\n");
+                    return 1;
+                },
+                else => return err,
+            };
+            if (selected == null) {
+                try stderr.writeAll("no linked worktrees to remove\n");
+                return 1;
+            }
+            branch = selected.?;
+            owned_selected_branch = selected.?;
 
-        const selection = prompt.selectItem(allocator, "Select worktree to remove", branches, stderr) catch |err| switch (err) {
-            error.SelectionCancelled => {
+            const safe_branch = prompt.sanitizeForTerminal(allocator, branch.?) catch branch.?;
+            defer if (safe_branch.ptr != branch.?.ptr) allocator.free(safe_branch);
+            const confirm_message = try std.fmt.allocPrint(allocator, "Remove worktree for branch {s}?", .{safe_branch});
+            defer allocator.free(confirm_message);
+
+            const confirmed = gumConfirm(allocator, confirm_message) catch |err| switch (err) {
+                error.GumNotFound => {
+                    try stderr.writeAll("gum is required for this remove UI flow. Install gum and try again.\n");
+                    return 1;
+                },
+                else => return err,
+            };
+            if (!confirmed) {
                 try stderr.writeAll("selection cancelled\n");
                 return 1;
-            },
-            else => {
-                try stderr.writeAll("invalid selection\n");
+            }
+        } else {
+            const branches = git_repo.getExistingWorktreeBranches(allocator) catch {
+                try stderr.writeAll("failed to get worktrees\n");
                 return 1;
-            },
-        };
-        branch = selection.value;
+            };
+            owned_branches = branches;
+            if (branches.len == 0) {
+                try stderr.writeAll("no worktrees to remove\n");
+                return 1;
+            }
+
+            const selection = prompt.selectItem(allocator, "Select worktree to remove", branches, stderr) catch |err| switch (err) {
+                error.SelectionCancelled => {
+                    try stderr.writeAll("selection cancelled\n");
+                    return 1;
+                },
+                else => {
+                    try stderr.writeAll("invalid selection\n");
+                    return 1;
+                },
+            };
+            branch = selection.value;
+        }
     }
 
     const outcome = removeWorktree(allocator, cfg, branch.?, parsed.force, stderr) catch |err| switch (err) {
@@ -250,6 +302,137 @@ fn parseArgs(args: []const []const u8) !ParsedArgs {
     }
 
     return parsed;
+}
+
+fn chooseRemoveBranchWithGum(allocator: std.mem.Allocator, stderr: *std.Io.Writer) !?[]u8 {
+    var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
+    defer listed.deinit(allocator);
+
+    if (listed.entries.len <= 1) return null;
+
+    var choices = std.ArrayList(GumChoice).empty;
+    defer {
+        for (choices.items) |choice| {
+            allocator.free(choice.label);
+            allocator.free(choice.value);
+        }
+        choices.deinit(allocator);
+    }
+
+    for (listed.entries[1..]) |entry| {
+        const branch = entry.branch orelse continue;
+        const safe_branch = prompt.sanitizeForTerminal(allocator, branch) catch branch;
+        defer if (safe_branch.ptr != branch.ptr) allocator.free(safe_branch);
+        const safe_path = prompt.sanitizeForTerminal(allocator, entry.path) catch entry.path;
+        defer if (safe_path.ptr != entry.path.ptr) allocator.free(safe_path);
+
+        const label = try std.fmt.allocPrint(allocator, "{s} - {s}", .{ safe_branch, safe_path });
+        const value = try allocator.dupe(u8, branch);
+        try choices.append(allocator, .{ .label = label, .value = value });
+    }
+
+    if (choices.items.len == 0) return null;
+
+    const selected = gumChoose(allocator, "Select worktree to remove", choices.items) catch |err| switch (err) {
+        error.GumNotFound => return error.GumNotFound,
+        else => return err,
+    };
+    defer if (selected) |value| allocator.free(value);
+    if (selected == null) return null;
+
+    for (choices.items) |choice| {
+        if (std.mem.eql(u8, choice.label, selected.?)) {
+            const branch = try allocator.dupe(u8, choice.value);
+            return branch;
+        }
+    }
+    return error.GumCommandFailed;
+}
+
+fn gumAvailable(allocator: std.mem.Allocator) !bool {
+    const result = std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "gum", "--version" },
+    }) catch |err| switch (err) {
+        error.FileNotFound => return false,
+        else => return err,
+    };
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+
+    return switch (result.term) {
+        .Exited => |code| code == 0,
+        else => false,
+    };
+}
+
+fn gumChoose(allocator: std.mem.Allocator, header: []const u8, choices: []const GumChoice) !?[]u8 {
+    var argv = std.ArrayList([]const u8).empty;
+    defer argv.deinit(allocator);
+
+    try argv.appendSlice(allocator, &.{ "gum", "choose", "--height", "20", "--header", header });
+    for (choices) |choice| try argv.append(allocator, choice.label);
+
+    const owned_argv = try argv.toOwnedSlice(allocator);
+    defer allocator.free(owned_argv);
+
+    const result = runGumCaptureStdout(allocator, owned_argv) catch |err| switch (err) {
+        error.FileNotFound => return error.GumNotFound,
+        else => return err,
+    };
+    defer allocator.free(result.stdout);
+
+    return switch (result.term) {
+        .Exited => |code| if (code == 0) blk: {
+            const trimmed = std.mem.trim(u8, result.stdout, " \r\n\t");
+            if (trimmed.len == 0) break :blk null;
+            break :blk try allocator.dupe(u8, trimmed);
+        } else if (code == 130)
+            error.SelectionCancelled
+        else
+            error.GumCommandFailed,
+        else => error.GumCommandFailed,
+    };
+}
+
+fn gumConfirm(allocator: std.mem.Allocator, message: []const u8) !bool {
+    const result = runGumCaptureStdout(allocator, &.{ "gum", "confirm", message }) catch |err| switch (err) {
+        error.FileNotFound => return error.GumNotFound,
+        else => return err,
+    };
+    defer allocator.free(result.stdout);
+
+    return switch (result.term) {
+        .Exited => |code| code == 0,
+        else => false,
+    };
+}
+
+const GumCaptureResult = struct {
+    term: std.process.Child.Term,
+    stdout: []u8,
+};
+
+fn runGumCaptureStdout(allocator: std.mem.Allocator, argv: []const []const u8) !GumCaptureResult {
+    var child = std.process.Child.init(argv, allocator);
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Inherit;
+
+    try child.spawn();
+    errdefer {
+        _ = child.kill() catch {};
+        _ = child.wait() catch {};
+    }
+
+    const captured = try child.stdout.?.readToEndAlloc(allocator, 64 * 1024);
+    errdefer allocator.free(captured);
+    const term = try child.wait();
+
+    return .{
+        .term = term,
+        .stdout = captured,
+    };
 }
 
 test "isSameOrChildPath matches boundaries" {

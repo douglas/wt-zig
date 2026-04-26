@@ -67,6 +67,7 @@ wt ui                              # gum-powered action picker (jump/remove; req
 wt ui remove --force               # interactive remove picker with force flag
 wt remove old-branch
 wt rm old-branch
+wt rm                              # interactive remove picker (gum UI if available)
 wt done                            # remove current linked worktree
 ```
 
