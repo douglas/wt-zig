@@ -3,18 +3,23 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.15.2
 
@@ -24,6 +29,7 @@ jobs:
   build:
     needs: test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         include:
@@ -37,9 +43,9 @@ jobs:
             artifact: darwin-arm64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: mlugg/setup-zig@v2
+      - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.15.2
 
@@ -66,7 +72,7 @@ jobs:
           ARTIFACT: ${{ matrix.artifact }}
         run: tar -czf "wt-zig-${VERSION}-${ARTIFACT}.tar.gz" -C zig-out/bin wt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wt-zig-${{ matrix.artifact }}
           path: wt-zig-*.tar.gz
@@ -74,10 +80,13 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           merge-multiple: true
 
@@ -87,87 +96,28 @@ jobs:
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         run: |
+          retry() {
+            local attempt=1
+            local max_attempts=3
+            while true; do
+              "$@" && return 0
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                return 1
+              fi
+              sleep $((attempt * 2))
+              attempt=$((attempt + 1))
+            done
+          }
+
           release_notes="See [CHANGELOG.md](https://github.com/${REPO}/blob/main/CHANGELOG.md) for details."
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" \
+          if retry gh release view "$TAG" >/dev/null 2>&1; then
+            retry gh release edit "$TAG" \
               --title "$TAG" \
               --notes "$release_notes"
-            gh release upload "$TAG" wt-zig-*.tar.gz --clobber
+            retry gh release upload "$TAG" wt-zig-*.tar.gz --clobber
           else
-            gh release create "$TAG" \
+            retry gh release create "$TAG" \
               --title "$TAG" \
               --notes "$release_notes" \
               wt-zig-*.tar.gz
           fi
-
-  aur:
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Extract version from tag
-        id: version
-        env:
-          REF_NAME: ${{ github.ref_name }}
-        run: echo "version=${REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Compute source tarball sha256
-        id: sha256
-        env:
-          REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: |
-          sha=$(curl -sL "https://github.com/${REPO}/archive/${TAG}.tar.gz" | sha256sum | cut -d' ' -f1)
-          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Setup SSH for AUR
-        env:
-          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          echo "$AUR_SSH_KEY" > ~/.ssh/aur
-          chmod 600 ~/.ssh/aur
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
-          printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur\n  User aur\n' >> ~/.ssh/config
-
-      - name: Clone AUR repo
-        run: git clone ssh://aur@aur.archlinux.org/wt-zig.git aur-wt-zig
-
-      - name: Update PKGBUILD and .SRCINFO
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          SHA256: ${{ steps.sha256.outputs.sha256 }}
-        run: |
-          cd aur-wt-zig
-          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
-          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
-
-          # Generate .SRCINFO (deterministic format, no makepkg needed)
-          printf '%s\n' \
-            "pkgbase = wt-zig" \
-            "	pkgdesc = Git worktree manager with organized directory structure" \
-            "	pkgver = ${VERSION}" \
-            "	pkgrel = 1" \
-            "	url = https://github.com/douglas/wt-zig" \
-            "	arch = x86_64" \
-            "	license = AGPL-3.0-or-later" \
-            "	makedepends = zig" \
-            "	depends = glibc" \
-            "	depends = git" \
-            "	provides = wt" \
-            "	conflicts = wt" \
-            "	source = wt-zig-${VERSION}.tar.gz::https://github.com/douglas/wt-zig/archive/v${VERSION}.tar.gz" \
-            "	sha256sums = ${SHA256}" \
-            "" \
-            "pkgname = wt-zig" > .SRCINFO
-
-      - name: Push to AUR
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          cd aur-wt-zig
-          git config user.name "Douglas Soares de Andrade"
-          git config user.email "contato@douglasandrade.com"
-          git add PKGBUILD .SRCINFO
-          git diff --cached --quiet && echo "No changes to push" && exit 0
-          git commit -m "Update to ${VERSION}"
-          git push

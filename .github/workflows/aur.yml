@@ -1,0 +1,118 @@
+name: AUR Publish
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aur-${{ github.event.release.tag_name }}
+  cancel-in-progress: true
+
+jobs:
+  aur:
+    if: ${{ github.repository == 'douglas/wt-zig' && !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Extract version from tag
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Compute source tarball sha256
+        id: sha256
+        env:
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          sha=""
+          for attempt in 1 2 3; do
+            sha=$(curl -fsSL "https://github.com/${REPO}/archive/${TAG}.tar.gz" | sha256sum | cut -d' ' -f1) && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "failed to fetch release tarball for checksum" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Setup SSH for AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+
+          for attempt in 1 2 3; do
+            ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "failed to scan aur.archlinux.org host key" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+          printf 'Host aur.archlinux.org\n  IdentityFile ~/.ssh/aur\n  User aur\n' >> ~/.ssh/config
+
+      - name: Clone AUR repo
+        run: |
+          for attempt in 1 2 3; do
+            git clone ssh://aur@aur.archlinux.org/wt-zig.git aur-wt-zig && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "failed to clone AUR repository" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
+
+      - name: Update PKGBUILD and .SRCINFO
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+        run: |
+          cd aur-wt-zig
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/^sha256sums=.*/sha256sums=('${SHA256}')/" PKGBUILD
+
+          printf '%s\n' \
+            "pkgbase = wt-zig" \
+            "   pkgdesc = Git worktree manager with organized directory structure" \
+            "   pkgver = ${VERSION}" \
+            "   pkgrel = 1" \
+            "   url = https://github.com/douglas/wt-zig" \
+            "   arch = x86_64" \
+            "   license = AGPL-3.0-or-later" \
+            "   makedepends = zig" \
+            "   depends = glibc" \
+            "   depends = git" \
+            "   provides = wt" \
+            "   conflicts = wt" \
+            "   source = wt-zig-${VERSION}.tar.gz::https://github.com/douglas/wt-zig/archive/v${VERSION}.tar.gz" \
+            "   sha256sums = ${SHA256}" \
+            "" \
+            "pkgname = wt-zig" > .SRCINFO
+
+      - name: Push to AUR
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          cd aur-wt-zig
+          git config user.name "Douglas Soares de Andrade"
+          git config user.email "contato@douglasandrade.com"
+          git add PKGBUILD .SRCINFO
+          git diff --cached --quiet && echo "No changes to push" && exit 0
+          git commit -m "Update to ${VERSION}"
+
+          for attempt in 1 2 3; do
+            git push && break
+            if [ "$attempt" -eq 3 ]; then
+              echo "failed to push AUR update" >&2
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
