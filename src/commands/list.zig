@@ -1,7 +1,12 @@
 const std = @import("std");
 const output = @import("../output.zig");
 const prompt = @import("../prompt.zig");
+const status_cmd = @import("status.zig");
 const worktree = @import("../git/worktree.zig");
+
+const ParsedArgs = struct {
+    full: bool = false,
+};
 
 pub fn run(
     ctx: output.Context,
@@ -9,12 +14,27 @@ pub fn run(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
-    if (args.len != 0) {
-        return output.usageError(ctx, stdout, stderr, "wt list", "Usage: wt list");
-    }
+    const parsed = parseArgs(args) catch return output.usageError(ctx, stdout, stderr, "wt list", "Usage: wt list [--full]");
 
     var result = worktree.list(ctx.allocator, stderr) catch return 1;
     defer result.deinit(ctx.allocator);
+
+    if (parsed.full) {
+        const cwd = std.process.getCwdAlloc(ctx.allocator) catch "";
+        defer if (cwd.len != 0) ctx.allocator.free(cwd);
+        const statuses = try status_cmd.collect(ctx.allocator, result.entries, cwd);
+        defer ctx.allocator.free(statuses);
+
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt list", .{ .worktrees = statuses });
+            return 0;
+        }
+
+        for (statuses) |status| {
+            try status_cmd.printStatusLine(stdout, status);
+        }
+        return 0;
+    }
 
     if (output.isJson(ctx)) {
         try output.emitSuccess(ctx, stdout, "wt list", .{ .worktrees = result.entries });
@@ -70,4 +90,25 @@ pub fn run(
     }
 
     return 0;
+}
+
+fn parseArgs(args: []const []const u8) !ParsedArgs {
+    var parsed = ParsedArgs{};
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--full")) {
+            parsed.full = true;
+            continue;
+        }
+        return error.InvalidArguments;
+    }
+    return parsed;
+}
+
+test "parseArgs accepts full mode" {
+    const parsed = try parseArgs(&.{"--full"});
+    try std.testing.expect(parsed.full);
+}
+
+test "parseArgs rejects unknown list args" {
+    try std.testing.expectError(error.InvalidArguments, parseArgs(&.{"branch"}));
 }

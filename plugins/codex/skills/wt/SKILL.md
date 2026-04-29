@@ -1,6 +1,6 @@
 ---
 name: wt
-description: "Use this skill when the user asks about `wt`, git worktrees, or commands like `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt jump` (`wt j`, `wt cd`), `wt ui`, `wt pr`, `wt mr`, `wt status`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
+description: "Use this skill when the user asks about `wt`, git worktrees, configured wt aliases, or commands like `wt switch` (`wt sw`, `wt cd`, `wt jump`), `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt step diff`, `wt step copy-ignored`, `wt step commit`, `wt step squash`, `wt step rebase`, `wt step push`, `wt step prune`, `wt merge`, `wt ui`, `wt pr`, `wt mr`, `wt status`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
 ---
 
 # wt-zig Skill for Codex
@@ -17,13 +17,25 @@ description: "Use this skill when the user asks about `wt`, git worktrees, or co
 ## Core Commands
 
 - `wt create <branch> [base]`
+- `wt switch <target>` / `wt sw <target>` / `wt cd <target>` / `wt jump <target>`
+- `wt switch --create <branch> [--base <base>]`
+- `wt switch --execute <command> -- <args...>`
 - `wt checkout <branch>` / `wt co <branch>`
-- `wt list` / `wt ls`
-- `wt jump <query>` / `wt j <query>` / `wt cd <query>`
-- `wt remove <branch>` / `wt rm <branch>`
-- `wt rm` (interactive remove picker; gum-first with text fallback)
+- `wt list [--full]` / `wt ls`
+- `wt remove [branches...]` / `wt rm [branches...]` (removes worktrees; deletes branches when safe)
+- `wt remove --no-delete-branch` (remove worktree and keep branch)
+- `wt remove --force-delete` / `-D` (delete branch even when unsafe)
+- `wt rm` (current linked worktree, or interactive remove picker outside one)
 - `wt ui [jump|remove] [--force|-f]` (gum-powered action picker)
-- `wt done [--force]`
+- `wt done [--force] [--no-delete-branch] [--force-delete]`
+- `wt step diff [target] [-- <git diff args>...]`
+- `wt step copy-ignored [--from <branch>] [--to <branch>] [--dry-run] [--force]`
+- `wt step commit --message <message> [--stage all|tracked|none]`
+- `wt step squash [target] --message <message> [--stage all|tracked|none]`
+- `wt step rebase [target]`
+- `wt step push [target]`
+- `wt step prune`
+- `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]`
 - `wt pr [number|url]`
 - `wt mr [number|url]`
 - `wt status`
@@ -49,12 +61,15 @@ wt --format json version
 
 - Global config: `~/.config/wt/config.toml` (or `WT_CONFIG` / `--config`)
 - Per-repo override: `.wt.toml` in repo root
-- Hook blocks support pre/post create/checkout/remove/pr/mr with `WT_*` env variables.
+- Hook blocks support pre/post create/checkout/start/remove/pr/mr with `WT_*` env variables.
+- `[aliases]` entries define custom wt commands; repo aliases override global aliases, and extra CLI args are appended to the last command.
+- `[step.copy-ignored] exclude = [...]` skips ignored copy candidates with gitignore-like patterns; use `!pattern` entries for exceptions.
+- `wt merge` defaults stay compatible: merge into the default base and clean up the source worktree. Pipeline steps are opt-in through flags like `--rebase`, `--squash`, and `--push`.
 
 ## Guidance for Codex
 
-- Prefer `wt create`/`wt co` over branch switching in the main checkout.
+- Prefer `wt switch` over branch switching in the main checkout.
 - Use `wt ls` or `wt status` before removal/cleanup operations.
 - In non-interactive contexts, pass explicit arguments instead of relying on prompts.
 - If `gum` is installed, prefer `wt rm` or `wt ui` for interactive remove/jump workflows.
-- If the user asks for navigation behavior, mention shell integration (`wt init`, `wt shellenv`) and aliases (`wt j`, `wt cd`).
+- If the user asks for navigation behavior, mention shell integration (`wt init`, `wt shellenv`) and aliases (`wt sw`, `wt cd`, `wt jump`).

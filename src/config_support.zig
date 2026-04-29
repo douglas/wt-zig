@@ -4,6 +4,7 @@ const std = @import("std");
 const types = @import("config_types.zig");
 
 pub const Hooks = types.Hooks;
+pub const Alias = types.Alias;
 
 pub const ParsedFile = struct {
     root: ?[]const u8 = null,
@@ -11,7 +12,9 @@ pub const ParsedFile = struct {
     pattern: ?[]const u8 = null,
     separator: ?[]const u8 = null,
     hooks: Hooks = .{},
+    aliases: []const Alias = &.{},
     copy_files: types.CopyFiles = .{},
+    step: types.Step = .{},
 
     pub fn deinit(self: *ParsedFile, allocator: std.mem.Allocator) void {
         if (self.root) |value| allocator.free(value);
@@ -20,14 +23,21 @@ pub const ParsedFile = struct {
         if (self.separator) |value| allocator.free(value);
         freeHookList(allocator, self.hooks.pre_create);
         freeHookList(allocator, self.hooks.post_create);
+        freeHookList(allocator, self.hooks.pre_start);
+        freeHookList(allocator, self.hooks.post_start);
+        freeHookList(allocator, self.hooks.pre_commit);
+        freeHookList(allocator, self.hooks.post_commit);
         freeHookList(allocator, self.hooks.pre_checkout);
         freeHookList(allocator, self.hooks.post_checkout);
+        freeHookList(allocator, self.hooks.pre_merge);
+        freeHookList(allocator, self.hooks.post_merge);
         freeHookList(allocator, self.hooks.pre_remove);
         freeHookList(allocator, self.hooks.post_remove);
         freeHookList(allocator, self.hooks.pre_pr);
         freeHookList(allocator, self.hooks.post_pr);
         freeHookList(allocator, self.hooks.pre_mr);
         freeHookList(allocator, self.hooks.post_mr);
+        freeAliasList(allocator, self.aliases);
         freeStringList(allocator, self.copy_files.paths);
         freeStringList(allocator, self.copy_files.dirs);
         if (self.copy_files.strategy) |s| allocator.free(s);
@@ -37,6 +47,7 @@ pub const ParsedFile = struct {
         }
         if (self.copy_files.repo_overrides.len > 0)
             allocator.free(self.copy_files.repo_overrides);
+        freeStringList(allocator, self.step.copy_ignored.exclude);
     }
 };
 
@@ -65,8 +76,19 @@ pub const default_config_template =
     \\# Commands run via "sh -c" with WT_* environment variables.
     \\# Always quote variables in hooks: "$WT_PATH" not $WT_PATH
     \\# post_create = ["test -f \"$WT_MAIN\"/.env && cp \"$WT_MAIN\"/.env \"$WT_PATH\"/.env || true"]
+    \\# pre_start = ["echo Starting \"$WT_BRANCH\""]
+    \\# post_start = ["wt step copy-ignored"]
+    \\# pre_commit = ["zig fmt --check ."]
+    \\# post_commit = ["echo Committed \"$WT_BRANCH\""]
     \\# post_checkout = ["cd \"$WT_PATH\" && npm install"]
+    \\# pre_merge = ["zig build test"]
+    \\# post_merge = ["echo Merged \"$WT_BRANCH\""]
     \\# pre_remove = ["echo Removing \"$WT_PATH\""]
+    \\
+    \\[aliases]
+    \\# Aliases run shell commands serially. Extra CLI args are appended to the last command.
+    \\# recent = "git branch --sort=-committerdate"
+    \\# ship = ["git status --short", "git push"]
     \\
     \\[copy_files]
     \\# Files to copy from the main worktree into each new worktree.
@@ -140,6 +162,7 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
 
     var parsed: ParsedFile = .{};
     var current_section: ?[]const u8 = null;
+    var alias_entries = std.ArrayList(types.Alias).empty;
     var repo_overrides = std.ArrayList(types.CopyFilesRepoOverride).empty;
     var lines = std.mem.splitScalar(u8, buffer, '\n');
 
@@ -161,14 +184,28 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
 
         if (value[0] == '[') {
             const items = try parseStringArray(allocator, value);
-            if (current_section) |section| {
+            if (current_section == null) {
+                if (std.mem.eql(u8, key, "step.copy-ignored.exclude") or
+                    std.mem.eql(u8, key, "step.copy_ignored.exclude"))
+                {
+                    parsed.step.copy_ignored.exclude = items;
+                }
+            } else if (current_section) |section| {
                 if (std.mem.eql(u8, section, "hooks")) {
                     setHookField(&parsed.hooks, key, items);
+                } else if (std.mem.eql(u8, section, "aliases")) {
+                    try setAliasField(allocator, &alias_entries, key, items);
                 } else if (std.mem.eql(u8, section, "copy_files")) {
                     if (std.mem.eql(u8, key, "paths")) {
                         parsed.copy_files.paths = items;
                     } else if (std.mem.eql(u8, key, "dirs")) {
                         parsed.copy_files.dirs = items;
+                    }
+                } else if (std.mem.eql(u8, section, "step.copy-ignored") or
+                    std.mem.eql(u8, section, "step.copy_ignored"))
+                {
+                    if (std.mem.eql(u8, key, "exclude")) {
+                        parsed.step.copy_ignored.exclude = items;
                     }
                 } else if (std.mem.startsWith(u8, section, "copy_files.")) {
                     if (std.mem.eql(u8, key, "paths")) {
@@ -199,12 +236,17 @@ pub fn parseFile(allocator: std.mem.Allocator, path: []const u8) !ParsedFile {
         } else if (current_section) |section| {
             if (std.mem.eql(u8, section, "copy_files") and std.mem.eql(u8, key, "strategy")) {
                 parsed.copy_files.strategy = string_value;
+            } else if (std.mem.eql(u8, section, "aliases")) {
+                const commands = try allocator.alloc([]const u8, 1);
+                commands[0] = string_value;
+                try setAliasField(allocator, &alias_entries, key, commands);
             } else {
                 allocator.free(string_value);
             }
         }
     }
 
+    parsed.aliases = try alias_entries.toOwnedSlice(allocator);
     parsed.copy_files.repo_overrides = try repo_overrides.toOwnedSlice(allocator);
     return parsed;
 }
@@ -242,11 +284,51 @@ fn parseStringArray(allocator: std.mem.Allocator, raw: []const u8) ![]const []co
 
 fn setHookField(h: *Hooks, key: []const u8, value: []const []const u8) void {
     inline for (comptime std.meta.fields(Hooks)) |field| {
-        if (std.mem.eql(u8, key, field.name)) {
+        if (hookKeyMatches(key, field.name)) {
             @field(h, field.name) = value;
             return;
         }
     }
+}
+
+fn setAliasField(
+    allocator: std.mem.Allocator,
+    aliases: *std.ArrayList(types.Alias),
+    key: []const u8,
+    commands: []const []const u8,
+) !void {
+    for (aliases.items) |*alias| {
+        if (std.mem.eql(u8, alias.name, key)) {
+            freeStringList(allocator, alias.commands);
+            alias.commands = commands;
+            return;
+        }
+    }
+
+    try aliases.append(allocator, .{
+        .name = try allocator.dupe(u8, key),
+        .commands = commands,
+    });
+}
+
+fn hookKeyMatches(key: []const u8, field_name: []const u8) bool {
+    if (std.mem.eql(u8, key, field_name)) return true;
+    if (key.len != field_name.len) return false;
+
+    for (key, field_name) |key_ch, field_ch| {
+        if (key_ch == '-' and field_ch == '_') continue;
+        if (key_ch != field_ch) return false;
+    }
+
+    return true;
+}
+
+fn freeAliasList(allocator: std.mem.Allocator, aliases: []const types.Alias) void {
+    for (aliases) |alias| {
+        allocator.free(alias.name);
+        freeStringList(allocator, alias.commands);
+    }
+    if (aliases.len > 0) allocator.free(aliases);
 }
 
 fn freeStringList(allocator: std.mem.Allocator, values: []const []const u8) void {

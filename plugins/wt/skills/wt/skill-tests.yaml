@@ -14,16 +14,44 @@ tests:
     prompt: "how do I checkout a GitHub PR with wt?"
     should_trigger: true
 
-  - id: wt-jump
-    prompt: "how do I jump to a worktree by branch name?"
+  - id: wt-switch
+    prompt: "how do I switch to a worktree by branch name?"
     should_trigger: true
 
   - id: wt-cd-alias
-    prompt: "how do I use wt cd to jump to a worktree?"
+    prompt: "how do I use wt cd to switch to a worktree?"
+    should_trigger: true
+
+  - id: wt-switch-execute
+    prompt: "how do I launch claude after switching to a worktree?"
     should_trigger: true
 
   - id: wt-done
     prompt: "what does wt done do?"
+    should_trigger: true
+
+  - id: wt-step-diff
+    prompt: "how do I show all branch changes including untracked files with wt?"
+    should_trigger: true
+
+  - id: wt-step-copy-ignored
+    prompt: "how do I copy ignored files like node_modules into a new worktree?"
+    should_trigger: true
+
+  - id: wt-step-primitives
+    prompt: "can wt step squash and push my current worktree branch?"
+    should_trigger: true
+
+  - id: wt-aliases
+    prompt: "how do I add a custom wt alias in .wt.toml?"
+    should_trigger: true
+
+  - id: wt-merge
+    prompt: "how do I merge my current worktree branch back to main?"
+    should_trigger: true
+
+  - id: wt-merge-pipeline
+    prompt: "does wt merge rebase and push by default or do I opt in?"
     should_trigger: true
 
   - id: wt-ui

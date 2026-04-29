@@ -47,8 +47,15 @@ The Zig version is a native port with the same practical feature set, but it use
 
 The Zig version also includes features not present in Go `wt`:
 
-- `wt done [--force|-f]` — remove the current linked worktree and navigate back to the project root, without needing to name the branch or use an interactive selector
-- `wt jump <query>` / `wt j <query>` — fuzzy navigation to a linked worktree by branch name
+- `wt done [--force|-f] [--no-delete-branch] [--force-delete|-D]` — remove the current linked worktree, safely delete the branch by default, and navigate back to the project root
+- `wt remove [branches...] [--no-delete-branch] [--force-delete|-D]` — remove one or more linked worktrees and make branch cleanup explicit
+- `[aliases]` config entries — project or global shortcut commands, with repo aliases overriding global aliases
+- `wt step diff [target] [-- <git diff args>...]` — Worktrunk-style branch-point diff that includes committed, staged, unstaged, and untracked files without mutating the real index
+- `wt step commit|squash|rebase|push|prune` — git-backed workflow primitives that can be used directly or composed by agents/scripts
+- `wt step copy-ignored [--from <branch>] [--to <branch>] [--dry-run] [--force]` — Worktrunk-style ignored-file copier with `.worktreeinclude`, `[step.copy-ignored].exclude`, built-in VCS/tool-state excludes, and copy-on-write support
+- `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]` — local merge of the current branch into a target branch, with source worktree cleanup by default and pipeline steps kept opt-in
+- `wt switch <target>` / `wt sw <target>` / `wt cd <target>` / `wt jump <target>` — Worktrunk-style navigation, checkout, creation, and PR/MR shortcuts
+- `wt switch --execute <command> -- <args...>` — run a shell command after switching, via directive files when shell integration is active or in the target worktree when invoked directly
 - `wt ui [jump|remove] [--force|-f]` — gum-powered interactive jump/remove UI
 
 The later maintenance passes made that Zig advantage more concrete:

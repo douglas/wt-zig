@@ -36,9 +36,45 @@ pub fn emitSuccess(
 }
 
 pub fn emitNavigateTo(stdout: *std.Io.Writer, path: []const u8) !void {
+    try writeDirectiveFile(&.{ "WT_DIRECTIVE_CD_FILE", "WORKTRUNK_DIRECTIVE_CD_FILE" }, path);
     try stdout.writeAll("wt navigating to: ");
     try stdout.writeAll(path);
     try stdout.writeByte('\n');
+}
+
+pub fn emitExecute(command: []const u8) !bool {
+    const path = directiveFilePath(&.{ "WT_DIRECTIVE_EXEC_FILE", "WORKTRUNK_DIRECTIVE_EXEC_FILE" }) orelse return false;
+    try appendLine(path, command);
+    return true;
+}
+
+fn writeDirectiveFile(env_names: []const []const u8, value: []const u8) !void {
+    const path = directiveFilePath(env_names) orelse return;
+    try writeFile(path, value);
+}
+
+fn directiveFilePath(env_names: []const []const u8) ?[]const u8 {
+    for (env_names) |name| {
+        if (std.posix.getenv(name)) |path| {
+            if (path.len > 0) return path;
+        }
+    }
+    return null;
+}
+
+fn writeFile(path: []const u8, value: []const u8) !void {
+    const file = try std.fs.createFileAbsolute(path, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(value);
+    try file.writeAll("\n");
+}
+
+fn appendLine(path: []const u8, value: []const u8) !void {
+    const file = try std.fs.openFileAbsolute(path, .{ .mode = .write_only });
+    defer file.close();
+    try file.seekFromEnd(0);
+    try file.writeAll(value);
+    try file.writeAll("\n");
 }
 
 fn isStringLike(comptime T: type) bool {

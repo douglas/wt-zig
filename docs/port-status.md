@@ -9,11 +9,11 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `help`, `version`, `list`, `status`, `default`
 - `config show`, `config path`, `config init`
 - `completion`
+- `switch` / `sw` / `cd` / `jump` / `j`
 - `checkout` / `co`
 - `create`
 - `remove` / `rm`
 - `done`
-- `jump` / `j` / `cd`
 - `ui`
 - `prune`
 - `cleanup`
@@ -24,6 +24,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `info`
 - `shellenv`
 - `init`
+- configured `[aliases]`
 
 ## Port Complete
 
@@ -33,7 +34,8 @@ The port is complete under the repo's practical-parity standard:
 - `zig build` and `zig build test` pass
 - `./scripts/parity-harness.sh` reports no Zig-only failures relative to the Go baseline
 - 4-tier copy strategy system: `native_clone` (clonefile/FICLONE) → `clone` (cp --reflink) → `rsync` → `standard`; auto-detected per operation, configurable via `[copy_files] strategy`
-- `wt jump <query>` / `j` / `cd` for fuzzy worktree navigation
+- `wt switch <target>` / `sw` / `cd` / `jump` / `j` for Worktrunk-style navigation and checkout
+- configured `[aliases]` for custom workflow commands, with per-repo aliases overriding global aliases
 - `wt ui [jump|remove] [--force|-f]` for gum-powered interactive jump/remove flows
 
 The current accepted baseline on this host (latest run: 2026-04-25) is:
@@ -222,6 +224,73 @@ Commit: `2ee74d4`
 - Added `done` to root help, shellenv completion lists, and the examples catalog.
 - Re-enabled `zig build release` by skipping background cache warming in single-threaded builds.
 
+### Phase 19: Worktrunk-style switch command
+
+- Added `wt switch` as the primary create/checkout/navigate command.
+- Preserved legacy navigation names by mapping `wt cd`, `wt jump`, and `wt j` to `switch`; added `wt sw`.
+- Reused the existing fuzzy worktree matcher for navigation.
+- Added `wt switch --create|-c <branch> [--base <branch>]`.
+- Added shortcuts: `^` for the main worktree, `@` for the current worktree, `-` for the worktree containing `OLDPWD`, `pr:N` for GitHub PRs, and `mr:N` for GitLab MRs.
+- Updated shell completions, shellenv command lists, README, and local skill docs.
+
+### Phase 20: Rich list mode
+
+- Added `wt list --full` for Worktrunk-inspired local status inventory.
+- Reused the `status` collector so `list --full` includes current marker, dirty/clean state, and upstream ahead/behind counts.
+- Kept default `wt list` output unchanged and fast.
+
+### Phase 21: safer remove/done branch cleanup
+
+- `wt remove` now accepts multiple branches and, with no arguments, removes the current linked worktree when run inside one.
+- `wt remove` and `wt done` safely delete the removed worktree branch by default when it is integrated with the default base.
+- Added `--no-delete-branch` to retain branches and `--force-delete` / `-D` to delete a branch even when unsafe.
+- JSON removal output now includes `branch_deleted`, `branch_delete_reason`, and `branch_retained_reason` metadata.
+- `wt cleanup` keeps its prior worktree-only semantics by explicitly retaining branches.
+
+### Phase 22: step diff
+
+- Added `wt step diff [target] [-- <git diff args>...]`.
+- Diffs from `git merge-base HEAD <target>` so output represents all changes since branching.
+- Copies the real Git index to a temporary index and runs `git add --intent-to-add .` there so untracked files appear without mutating the real index.
+- Forwards arguments after `--` directly to `git diff`, including `--stat`, `--name-only`, and pathspecs.
+- Rejects JSON mode because output is intentionally raw git diff text.
+
+### Phase 23: directive shell integration and switch execute
+
+- Added directive-file shell integration alongside the existing `wt navigating to:` marker.
+- Text navigation commands now write raw target paths to `WT_DIRECTIVE_CD_FILE` or `WORKTRUNK_DIRECTIVE_CD_FILE` when set.
+- Shell wrappers create separate CD and EXEC temp files, consume raw CD directives without shell parsing, and source/evaluate EXEC directives after navigation.
+- Added `wt switch --execute|-x <command> [-- <args>...]`.
+- `--execute` writes to the EXEC directive file when shell integration is active; without a wrapper, it runs through `sh -c` in the target worktree.
+
+### Phase 24: local merge workflow
+
+- Added `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]`.
+- The command merges the current branch into the target branch, defaulting to the repository default base.
+- Compatible defaults remain intentionally small: fast-forward merges are used by default, source cleanup runs after success, and pipeline steps do not run unless requested.
+- `--no-ff` creates a merge commit when the target branch has an active worktree.
+- `--rebase`, `--squash`, and `--push` are opt-in pipeline steps.
+- After a successful merge, the source worktree is removed and the source branch is cleaned up by default.
+- `--no-remove` keeps the source worktree and branch after integration.
+
+### Phase 25: copy ignored and start hooks
+
+- Added `wt step copy-ignored [--from <branch>] [--to <branch>] [--dry-run] [--force]`.
+- The source defaults to the main worktree and the destination defaults to the current worktree.
+- Ignored entries are discovered with `git ls-files --ignored --exclude-standard -o --directory -z`.
+- `.worktreeinclude` can constrain copies to selected ignored paths, with built-in exclusions for VCS metadata and tool-state directories.
+- `[step.copy-ignored] exclude = [...]` adds configurable gitignore-style exclusions, including negated exceptions such as `!cache/keep.sqlite`.
+- Copies use the existing copy-on-write strategy ladder and preserve executable file permissions in the Zig fallback path.
+- Added `pre_start` / `post_start` hooks. `pre_start` runs synchronously after a new worktree is created, while `post_start` is detached and logs output under the repository git common directory.
+
+### Phase 26: aliases, step primitives, and discovery polish
+
+- Added configured `[aliases]` dispatch. Aliases may be single strings or arrays, run through the shell, and append extra CLI args to the final command.
+- Repo `.wt.toml` aliases override global aliases with the same name.
+- Added `wt step commit`, `wt step squash`, `wt step rebase`, `wt step push`, and `wt step prune` as direct workflow primitives.
+- Kept merge defaults compatible while exposing the optional pipeline flags in help, examples, and completions.
+- Updated docs, examples, shell completions, and local assistant skills for alias, copy-ignored exclude, step primitive, merge pipeline, and prune-wrapper discoverability.
+
 ## Verification Patterns
 
 The port has been verified repeatedly with both unit/build checks and temp-repo smoke tests.
@@ -265,9 +334,4 @@ Useful smoke-test patterns that already proved valuable:
 
 ## Remaining Work
 
-No intentional feature gaps remain versus the current Go CLI command surface. Any further work should be treated as post-completion polish:
-
-- bug-fix parity where Zig behavior diverges from Go in edge cases
-- platform polish, especially broader Windows/PowerShell verification
-- output-format refinements where the shape is compatible but not byte-for-byte identical
-- tracking current Go-baseline harness failures as upstream changes land in [wt](https://github.com/timvw/wt)
+No intentional feature gaps remain versus the original Go CLI command surface. Worktrunk-inspired post-parity features should be treated as new product work and documented as opt-in behavior when they change workflow defaults.

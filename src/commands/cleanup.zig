@@ -110,7 +110,10 @@ pub fn run(
             }
         }
 
-        const outcome = remove.removeWorktree(allocator, cfg, candidate.branch, parsed.force, stderr) catch |err| switch (err) {
+        const outcome = remove.removeWorktree(allocator, cfg, candidate.branch, .{
+            .force = parsed.force,
+            .branch_cleanup = .keep,
+        }, stderr) catch |err| switch (err) {
             error.NoSuchWorktree, error.CannotRemoveMainWorktree => continue,
             error.HookCommandFailed => {
                 skipped_count += 1;

@@ -90,6 +90,12 @@ pub fn printHelp(writer: *std.Io.Writer) !void {
         \\  path
         \\      Print the resolved config file path
         \\
+        \\Config also supports:
+        \\  [aliases]
+        \\      Custom shell commands. Extra CLI args are appended to the final alias command.
+        \\  [step.copy-ignored]
+        \\      exclude = ["cache/", "*.sqlite", "!cache/keep.sqlite"]
+        \\
     );
 }
 
@@ -110,6 +116,8 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
         \\  pattern = {s} ({s})
         \\  separator = "{s}" ({s})
         \\  copy_strategy = {s} ({s})
+        \\  copy_ignored.exclude = {d} pattern(s)
+        \\  aliases = {d} configured
         \\
     ,
         .{
@@ -125,6 +133,8 @@ pub fn printShow(cfg: *const config.Resolved, writer: *std.Io.Writer) !void {
             cfg.sources.separator,
             copy_strategy,
             copy_strategy_source,
+            cfg.step.copy_ignored.exclude.len,
+            cfg.aliases.len,
         },
     );
 
@@ -157,6 +167,8 @@ fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.
             .pattern = .{ .value = pattern, .source = pattern_source },
             .separator = .{ .value = cfg.separator, .source = cfg.sources.separator },
             .copy_strategy = .{ .value = copy_strategy, .source = copy_strategy_source },
+            .copy_ignored_exclude = cfg.step.copy_ignored.exclude,
+            .aliases = cfg.aliases,
         },
     });
 }

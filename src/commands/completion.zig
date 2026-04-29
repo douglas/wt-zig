@@ -1,7 +1,7 @@
 const std = @import("std");
 const output = @import("../output.zig");
 
-const command_words = "checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion";
+const command_words = "switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion";
 
 pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
@@ -80,17 +80,33 @@ fn bashScript() []const u8 {
     \\    fi
     \\
     \\    case "$prev" in
-    \\        checkout|co|create)
+    \\        switch|sw|cd|jump|j|checkout|co|create)
     \\            local branches remotes
     \\            remotes=$(git remote 2>/dev/null | paste -sd'|' -)
     \\            branches=$(git branch -a --format='%(refname:short)' 2>/dev/null | grep -v 'HEAD' | sed -E "s#^($remotes)/##" | sort -u)
-    \\            COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "$branches --create -c --base --execute -x" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        remove|rm)
     \\            local branches
     \\            branches=$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')
-    \\            COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "$branches --force -f --no-delete-branch --force-delete -D" -- "$cur") )
+    \\            return 0
+    \\            ;;
+    \\        done)
+    \\            COMPREPLY=( $(compgen -W "--force -f --no-delete-branch --force-delete -D" -- "$cur") )
+    \\            return 0
+    \\            ;;
+    \\        list|ls)
+    \\            COMPREPLY=( $(compgen -W "--full" -- "$cur") )
+    \\            return 0
+    \\            ;;
+    \\        step)
+    \\            COMPREPLY=( $(compgen -W "commit copy-ignored diff prune push rebase squash" -- "$cur") )
+    \\            return 0
+    \\            ;;
+    \\        merge)
+    \\            COMPREPLY=( $(compgen -W "--no-remove --no-ff --squash --rebase --push --no-hooks --message -m" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        config)
@@ -111,12 +127,17 @@ fn bashScript() []const u8 {
 fn fishScript() []const u8 {
     return 
     \\# fish completion for wt
-    \\set -l wt_commands checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion
+    \\set -l wt_commands switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion
     \\
     \\complete -c wt -n "__fish_use_subcommand" -a "$wt_commands"
     \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path"
-    \\complete -c wt -n "__fish_seen_subcommand_from checkout co create" -a "(git branch -a --format='%(refname:short)' 2>/dev/null | sed 's#^.*/##' | sort -u)"
+    \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j checkout co create" -a "(git branch -a --format='%(refname:short)' 2>/dev/null | sed 's#^.*/##' | sort -u)"
+    \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j" -a "--create -c --base --execute -x"
     \\complete -c wt -n "__fish_seen_subcommand_from remove rm" -a "(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\\[\\([^]]*\\)\\].*/\\1/p')"
+    \\complete -c wt -n "__fish_seen_subcommand_from remove rm done" -a "--force -f --no-delete-branch --force-delete -D"
+    \\complete -c wt -n "__fish_seen_subcommand_from list ls" -a "--full"
+    \\complete -c wt -n "__fish_seen_subcommand_from step" -a "commit copy-ignored diff prune push rebase squash"
+    \\complete -c wt -n "__fish_seen_subcommand_from merge" -a "--no-remove --no-ff --squash --rebase --push --no-hooks --message -m"
     \\complete -c wt -n "__fish_seen_subcommand_from ui" -a "jump remove --force -f"
     \\
     ;
@@ -127,7 +148,7 @@ fn powershellScript() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'cd', 'ui', 'completion')
+    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
     \\    if ($position -eq 0) {
@@ -136,17 +157,33 @@ fn powershellScript() []const u8 {
     \\        }
     \\    } elseif ($position -eq 1) {
     \\        $subCommand = $commandAst.CommandElements[1].Value
-    \\        if ($subCommand -in @('checkout', 'co', 'create')) {
+    \\        if ($subCommand -in @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create')) {
     \\            $remotes = (git remote 2>$null) -join '|'
     \\            $branches = git branch -a --format='%(refname:short)' 2>$null | Where-Object { $_ -notmatch 'HEAD' } | ForEach-Object { $_ -replace "^($remotes)/", '' } | Sort-Object -Unique
-    \\            $branches | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            ($branches + @('--create', '-c', '--base', '--execute', '-x')) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -in @('remove', 'rm')) {
     \\            $branches = git worktree list 2>$null | Select-Object -Skip 1 | ForEach-Object {
     \\                if ($_ -match '\[([^\]]+)\]') { $matches[1] }
     \\            }
-    \\            $branches | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            ($branches + @('--force', '-f', '--no-delete-branch', '--force-delete', '-D')) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'done') {
+    \\            @('--force', '-f', '--no-delete-branch', '--force-delete', '-D') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -in @('list', 'ls')) {
+    \\            @('--full') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'step') {
+    \\            @('commit', 'copy-ignored', 'diff', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'merge') {
+    \\            @('--no-remove', '--no-ff', '--squash', '--rebase', '--push', '--no-hooks', '--message', '-m') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
@@ -170,6 +207,11 @@ fn zshScript() []const u8 {
     \\_wt_complete_zsh() {
     \\    local -a commands branches
     \\    commands=(
+    \\        'switch:Switch to, create, or checkout a worktree'
+    \\        'sw:Switch to, create, or checkout a worktree'
+    \\        'cd:Switch to, create, or checkout a worktree'
+    \\        'jump:Switch to, create, or checkout a worktree'
+    \\        'j:Switch to, create, or checkout a worktree'
     \\        'checkout:Checkout existing branch in new worktree'
     \\        'co:Checkout existing branch in new worktree'
     \\        'create:Create new branch in worktree'
@@ -182,7 +224,9 @@ fn zshScript() []const u8 {
     \\        'rm:Remove a worktree'
     \\        'done:Remove current linked worktree'
     \\        'status:Show status dashboard of all worktrees'
+    \\        'step:Run focused workflow steps'
     \\        'cleanup:Remove worktrees for merged branches'
+    \\        'merge:Merge current branch into a target branch'
     \\        'migrate:Migrate existing worktrees to configured paths'
     \\        'prune:Remove worktree administrative files'
     \\        'help:Show help'
@@ -192,9 +236,6 @@ fn zshScript() []const u8 {
     \\        'config:Manage wt configuration'
     \\        'examples:Show practical command examples'
     \\        'version:Show version information'
-    \\        'jump:Navigate to a worktree by branch name'
-    \\        'j:Navigate to a worktree by branch name'
-    \\        'cd:Navigate to a worktree by branch name'
     \\        'ui:Open an interactive worktree UI'
     \\        'completion:Generate shell completion scripts'
     \\    )
@@ -203,15 +244,36 @@ fn zshScript() []const u8 {
     \\        _describe 'command' commands
     \\    elif (( CURRENT == 3 )); then
     \\        case "$words[2]" in
-    \\            checkout|co|create)
+    \\            switch|sw|cd|jump|j|checkout|co|create)
     \\                local remotes
     \\                remotes=$(git remote 2>/dev/null | paste -sd'|' -)
     \\                branches=(${(f)"$(git branch -a --format='%(refname:short)' 2>/dev/null | grep -v 'HEAD' | sed -E "s#^($remotes)/##" | sort -u)"})
+    \\                branches+=('--create:Create a new branch' '-c:Create a new branch' '--base:Base branch' '--execute:Run command after switching' '-x:Run command after switching')
     \\                _describe 'branch' branches
     \\                ;;
     \\            remove|rm)
-    \\                branches=(${(f)"$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')"})
+    \\                branches=(${(f)"$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')"} '--force:Force worktree removal' '-f:Force worktree removal' '--no-delete-branch:Keep the branch' '--force-delete:Delete branch even when unsafe' '-D:Delete branch even when unsafe')
     \\                _describe 'branch' branches
+    \\                ;;
+    \\            done)
+    \\                local -a done_flags
+    \\                done_flags=('--force:Force worktree removal' '-f:Force worktree removal' '--no-delete-branch:Keep the branch' '--force-delete:Delete branch even when unsafe' '-D:Delete branch even when unsafe')
+    \\                _describe 'done flag' done_flags
+    \\                ;;
+    \\            list|ls)
+    \\                local -a list_flags
+    \\                list_flags=('--full:Include current, dirty, and upstream status')
+    \\                _describe 'list flag' list_flags
+    \\                ;;
+    \\            step)
+    \\                local -a step_cmds
+    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                _describe 'step command' step_cmds
+    \\                ;;
+    \\            merge)
+    \\                local -a merge_flags
+    \\                merge_flags=('--no-remove:Keep source worktree after merge' '--no-ff:Create a merge commit' '--squash:Squash before merge' '--rebase:Rebase before merge' '--push:Push after merge' '--no-hooks:Skip merge pipeline hooks' '--message:Commit message for squash' '-m:Commit message for squash')
+    \\                _describe 'merge flag' merge_flags
     \\                ;;
     \\            config)
     \\                local -a config_cmds

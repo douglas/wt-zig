@@ -1,6 +1,6 @@
 ---
 name: wt
-description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt jump', 'wt j', 'wt cd', 'wt ui', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
+description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', wt aliases, 'wt switch', 'wt sw', 'wt cd', 'wt jump', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt step diff', 'wt step copy-ignored', 'wt step commit', 'wt step squash', 'wt step rebase', 'wt step push', 'wt step prune', 'wt merge', 'wt ui', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
 ---
 
 # Working with wt-zig - Git Worktree Manager
@@ -15,14 +15,26 @@ Never switch branches in the main checkout. Create a worktree per task to keep t
 
 | Command | Purpose |
 |---------|---------|
+| `wt switch <target>` / `wt sw <target>` / `wt cd <target>` / `wt jump <target>` | Primary workflow: navigate to existing worktrees, checkout existing branches, or use `^`, `@`, `-`, `pr:N`, `mr:N` shortcuts |
+| `wt switch --create <branch> [--base <base>]` | Create a new branch in a worktree and switch to it |
+| `wt switch --execute <command> -- <args...>` | Run a shell command after switching |
 | `wt create <branch> [base]` | Create a new branch in a worktree (defaults to main/master as base) |
 | `wt checkout <branch>` / `wt co <branch>` | Checkout an existing branch in a new worktree |
 | `wt co` | Interactive branch picker in text mode |
-| `wt list` / `wt ls` | List all worktrees |
-| `wt remove <branch>` / `wt rm <branch>` | Remove a worktree |
-| `wt rm` | Interactive remove picker (gum UI when available, text fallback otherwise) |
-| `wt done [--force]` | Remove current linked worktree |
-| `wt jump <query>` / `wt j <query>` / `wt cd <query>` | Navigate to a worktree by fuzzy branch name |
+| `wt list [--full]` / `wt ls` | List all worktrees; `--full` adds current/dirty/upstream status |
+| `wt remove [branches...]` / `wt rm [branches...]` | Remove worktrees; branches are deleted when safe |
+| `wt remove --no-delete-branch` | Remove worktree and keep branch |
+| `wt remove --force-delete` / `-D` | Remove worktree and delete branch even when unsafe |
+| `wt rm` | Current linked worktree, or interactive remove picker outside one |
+| `wt done [--force] [--no-delete-branch] [--force-delete]` | Remove current linked worktree; delete branch when safe |
+| `wt step diff [target] [-- <git diff args>...]` | Show branch-point diff including untracked files |
+| `wt step copy-ignored [--from <branch>] [--to <branch>] [--dry-run] [--force]` | Copy gitignored files between worktrees |
+| `wt step commit --message <message> [--stage all\|tracked\|none]` | Commit staged or selected changes |
+| `wt step squash [target] --message <message> [--stage all\|tracked\|none]` | Squash branch changes into one commit |
+| `wt step rebase [target]` | Rebase current branch onto target |
+| `wt step push [target]` | Fast-forward target branch to current branch |
+| `wt step prune` | Wrapper around merged-worktree cleanup |
+| `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]` | Merge current branch into target and clean up source worktree |
 | `wt ui [jump\|remove] [--force]` | Open gum-powered interactive worktree UI |
 | `wt pr [number\|url]` | Checkout a GitHub PR (requires `gh` CLI) |
 | `wt mr [number\|url]` | Checkout a GitLab MR (requires `glab` CLI) |
@@ -52,18 +64,22 @@ The `pattern` setting controls the path template. Variables include worktree roo
 
 - Global config file: `~/.config/wt/config.toml` (or `WT_CONFIG` / `--config`)
 - Per-repo override: `.wt.toml` in repo root
+- `[aliases]` entries define custom wt commands. A string runs one shell command; an array runs commands serially; extra CLI args are appended to the last command.
+- `[step.copy-ignored] exclude = ["cache/", "*.sqlite", "!cache/keep.sqlite"]` skips copy candidates with gitignore-like patterns and supports negated exceptions.
+- `wt merge` defaults stay compatible: merge into the default base and clean up the source worktree. `--rebase`, `--squash`, `--push`, `--no-ff`, and hooks/message controls are opt-in.
 - Common settings: `root`, `strategy`, `pattern`, `separator`, hooks
 - Env overrides: `WORKTREE_ROOT`, `WORKTREE_STRATEGY`, `WORKTREE_PATTERN`, `WORKTREE_SEPARATOR`
 
 ## Hooks
 
-wt-zig supports pre/post hooks for `create`, `checkout`, `remove`, `pr`, and `mr`.
+wt-zig supports pre/post hooks for `create`, `checkout`, `start`, `remove`, `pr`, and `mr`.
 
 Example:
 
 ```toml
 [hooks]
 post_create = ["cp .env $WT_PATH/.env"]
+post_start = ["wt step copy-ignored"]
 post_checkout = ["echo 'Switched to $WT_BRANCH'"]
 ```
 
@@ -84,13 +100,13 @@ In JSON mode, avoid interactive flows by passing explicit arguments.
 
 ## Shell Integration
 
-After `wt init`, the shell function can auto-navigate after create/checkout/jump. In non-interactive agent contexts, use the returned path explicitly.
+After `wt init`, the shell function can auto-navigate after switch/create/checkout/jump. In non-interactive agent contexts, use the returned path explicitly.
 
 ## Agent Workflow
 
 ```bash
 # 1. Create worktree for a task
-wt create feat/my-feature
+wt switch --create feat/my-feature
 
 # 2. Work in that worktree path
 
@@ -108,7 +124,7 @@ wt rm feat/my-feature
 
 ## When Helping Users
 
-- Prefer `wt create` or `wt co` over branch switching in main checkout
+- Prefer `wt switch` over branch switching in main checkout
 - Use `wt ls` / `wt status` to inspect worktree state before destructive operations
 - Use `wt ui` for interactive jump/remove flows when `gum` is installed
 - For PR/MR flows, prefer `wt pr` / `wt mr` when `gh` / `glab` are available

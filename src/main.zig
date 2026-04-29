@@ -24,6 +24,7 @@ pub fn main() !void {
 
 test {
     std.testing.refAllDecls(@import("app.zig"));
+    std.testing.refAllDecls(@import("aliases.zig"));
     std.testing.refAllDecls(@import("command.zig"));
     std.testing.refAllDecls(@import("config.zig"));
     std.testing.refAllDecls(@import("config_support.zig"));
@@ -48,8 +49,10 @@ test {
     std.testing.refAllDecls(@import("commands/migrate_support.zig"));
     std.testing.refAllDecls(@import("commands/remove.zig"));
     std.testing.refAllDecls(@import("commands/cleanup.zig"));
+    std.testing.refAllDecls(@import("commands/merge.zig"));
     std.testing.refAllDecls(@import("commands/prune.zig"));
     std.testing.refAllDecls(@import("commands/status.zig"));
+    std.testing.refAllDecls(@import("commands/step.zig"));
     std.testing.refAllDecls(@import("commands/jump.zig"));
     std.testing.refAllDecls(@import("commands/ui.zig"));
     std.testing.refAllDecls(@import("cow_copy.zig"));

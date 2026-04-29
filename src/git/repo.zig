@@ -16,6 +16,111 @@ pub fn getDefaultBase(allocator: std.mem.Allocator) ![]const u8 {
     };
 }
 
+pub const BranchDeleteReason = enum {
+    same_commit,
+    ancestor_of_base,
+    no_branch_changes,
+    trees_match,
+    merge_adds_nothing,
+    force_delete,
+};
+
+pub const BranchRetainedReason = enum {
+    disabled,
+    protected,
+    unsafe,
+    delete_failed,
+};
+
+pub fn branchDeleteReasonText(reason: BranchDeleteReason) []const u8 {
+    return switch (reason) {
+        .same_commit => "same_commit",
+        .ancestor_of_base => "ancestor_of_base",
+        .no_branch_changes => "no_branch_changes",
+        .trees_match => "trees_match",
+        .merge_adds_nothing => "merge_adds_nothing",
+        .force_delete => "force_delete",
+    };
+}
+
+pub fn branchRetainedReasonText(reason: BranchRetainedReason) []const u8 {
+    return switch (reason) {
+        .disabled => "disabled",
+        .protected => "protected",
+        .unsafe => "unsafe",
+        .delete_failed => "delete_failed",
+    };
+}
+
+pub fn isProtectedBranchName(branch: []const u8, default_base: []const u8) bool {
+    return std.mem.eql(u8, branch, "main") or
+        std.mem.eql(u8, branch, "master") or
+        std.mem.eql(u8, branch, default_base);
+}
+
+pub fn safeBranchDeleteReason(
+    allocator: std.mem.Allocator,
+    repo_path: []const u8,
+    branch: []const u8,
+    target: []const u8,
+) !?BranchDeleteReason {
+    const branch_commit_ref = try std.fmt.allocPrint(allocator, "{s}^{{commit}}", .{branch});
+    defer allocator.free(branch_commit_ref);
+    const target_commit_ref = try std.fmt.allocPrint(allocator, "{s}^{{commit}}", .{target});
+    defer allocator.free(target_commit_ref);
+
+    const branch_commit = gitOutputInPath(allocator, repo_path, &.{ "rev-parse", branch_commit_ref }) catch return null;
+    defer allocator.free(branch_commit);
+    const target_commit = gitOutputInPath(allocator, repo_path, &.{ "rev-parse", target_commit_ref }) catch return null;
+    defer allocator.free(target_commit);
+
+    if (std.mem.eql(u8, std.mem.trim(u8, branch_commit, " \r\n\t"), std.mem.trim(u8, target_commit, " \r\n\t"))) {
+        return .same_commit;
+    }
+
+    if (try gitQuietSuccessInPath(allocator, repo_path, &.{ "merge-base", "--is-ancestor", branch, target })) {
+        return .ancestor_of_base;
+    }
+
+    const merge_base_range = try std.fmt.allocPrint(allocator, "{s}...{s}", .{ target, branch });
+    defer allocator.free(merge_base_range);
+    if (try gitQuietSuccessInPath(allocator, repo_path, &.{ "diff", "--quiet", merge_base_range, "--" })) {
+        return .no_branch_changes;
+    }
+
+    const branch_tree_ref = try std.fmt.allocPrint(allocator, "{s}^{{tree}}", .{branch});
+    defer allocator.free(branch_tree_ref);
+    const target_tree_ref = try std.fmt.allocPrint(allocator, "{s}^{{tree}}", .{target});
+    defer allocator.free(target_tree_ref);
+
+    const branch_tree = gitOutputInPath(allocator, repo_path, &.{ "rev-parse", branch_tree_ref }) catch return null;
+    defer allocator.free(branch_tree);
+    const target_tree = gitOutputInPath(allocator, repo_path, &.{ "rev-parse", target_tree_ref }) catch return null;
+    defer allocator.free(target_tree);
+
+    if (std.mem.eql(u8, std.mem.trim(u8, branch_tree, " \r\n\t"), std.mem.trim(u8, target_tree, " \r\n\t"))) {
+        return .trees_match;
+    }
+
+    const merge_tree = gitOutputInPath(allocator, repo_path, &.{ "merge-tree", "--write-tree", target, branch }) catch return null;
+    defer allocator.free(merge_tree);
+    if (std.mem.eql(u8, std.mem.trim(u8, merge_tree, " \r\n\t"), std.mem.trim(u8, target_tree, " \r\n\t"))) {
+        return .merge_adds_nothing;
+    }
+
+    return null;
+}
+
+pub fn deleteBranch(
+    allocator: std.mem.Allocator,
+    repo_path: []const u8,
+    branch: []const u8,
+    force: bool,
+) !bool {
+    const delete_flag = if (force) "-D" else "-d";
+    return gitQuietSuccessInPath(allocator, repo_path, &.{ "branch", delete_flag, branch });
+}
+
 pub fn getRepoInfo(allocator: std.mem.Allocator) !path_mod.RepoInfo {
     var discard_buf: [4096]u8 = undefined;
     var discard = std.Io.Writer.fixed(&discard_buf);
@@ -352,6 +457,36 @@ fn gitQuietSuccess(allocator: std.mem.Allocator, argv: []const []const u8) !bool
     return proc.quietSuccess(allocator, owned);
 }
 
+fn gitOutputInPath(allocator: std.mem.Allocator, repo_path: []const u8, argv: []const []const u8) ![]u8 {
+    var args = std.ArrayList([]const u8).empty;
+    defer args.deinit(allocator);
+    try args.appendSlice(allocator, &.{ "git", "-C", repo_path });
+    try args.appendSlice(allocator, argv);
+
+    const owned = try args.toOwnedSlice(allocator);
+    defer allocator.free(owned);
+
+    var result = try proc.run(allocator, owned);
+    defer allocator.free(result.stderr);
+    if (!result.succeeded()) {
+        allocator.free(result.stdout);
+        return error.GitCommandFailed;
+    }
+
+    return result.stdout;
+}
+
+fn gitQuietSuccessInPath(allocator: std.mem.Allocator, repo_path: []const u8, argv: []const []const u8) !bool {
+    var args = std.ArrayList([]const u8).empty;
+    defer args.deinit(allocator);
+    try args.appendSlice(allocator, &.{ "git", "-C", repo_path });
+    try args.appendSlice(allocator, argv);
+    const owned = try args.toOwnedSlice(allocator);
+    defer allocator.free(owned);
+
+    return proc.quietSuccess(allocator, owned);
+}
+
 test "parseRemoteURL handles https and scp forms" {
     const github = parseRemoteURL("https://github.com/acme/test-repo.git") orelse return error.TestUnexpectedResult;
     try std.testing.expectEqualStrings("github.com", github.host);
@@ -362,6 +497,15 @@ test "parseRemoteURL handles https and scp forms" {
     try std.testing.expectEqualStrings("gitlab.com", gitlab.host);
     try std.testing.expectEqualStrings("group/subgroup", gitlab.owner);
     try std.testing.expectEqualStrings("project", gitlab.name);
+}
+
+test "branch cleanup reason helpers expose stable strings" {
+    try std.testing.expectEqualStrings("ancestor_of_base", branchDeleteReasonText(.ancestor_of_base));
+    try std.testing.expectEqualStrings("force_delete", branchDeleteReasonText(.force_delete));
+    try std.testing.expectEqualStrings("protected", branchRetainedReasonText(.protected));
+    try std.testing.expect(isProtectedBranchName("main", "trunk"));
+    try std.testing.expect(isProtectedBranchName("trunk", "trunk"));
+    try std.testing.expect(!isProtectedBranchName("feature", "trunk"));
 }
 
 test "parseRemoteURL rejects invalid inputs" {

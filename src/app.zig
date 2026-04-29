@@ -1,4 +1,5 @@
 const std = @import("std");
+const aliases = @import("aliases.zig");
 const command = @import("command.zig");
 const config = @import("config.zig");
 const output = @import("output.zig");
@@ -14,6 +15,7 @@ const help_cmd = @import("commands/help.zig");
 const info_cmd = @import("commands/info.zig");
 const init_cmd = @import("commands/init.zig");
 const list_cmd = @import("commands/list.zig");
+const merge_cmd = @import("commands/merge.zig");
 const migrate_cmd = @import("commands/migrate.zig");
 const mr_cmd = @import("commands/mr.zig");
 const pr_cmd = @import("commands/pr.zig");
@@ -21,8 +23,9 @@ const prune_cmd = @import("commands/prune.zig");
 const remove_cmd = @import("commands/remove.zig");
 const shellenv_cmd = @import("commands/shellenv.zig");
 const status_cmd = @import("commands/status.zig");
+const step_cmd = @import("commands/step.zig");
+const switch_cmd = @import("commands/switch.zig");
 const version_cmd = @import("commands/version.zig");
-const jump_cmd = @import("commands/jump.zig");
 const ui_cmd = @import("commands/ui.zig");
 
 pub fn run(
@@ -61,6 +64,10 @@ pub fn run(
     }
 
     const spec = command.find(args[0]) orelse {
+        if (aliases.find(&loaded_config.resolved, args[0])) |alias_commands| {
+            return aliases.run(allocator, args[0], alias_commands, args[1..], stderr);
+        }
+
         if (output.isJson(ctx)) {
             try stderr.print("unknown command \"{s}\" for \"wt\"\n", .{args[0]});
         } else {
@@ -90,13 +97,15 @@ pub fn run(
         .done => done_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .prune => prune_cmd.run(ctx, args[1..], stdout, stderr),
         .cleanup => cleanup_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .merge => merge_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .migrate => migrate_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .pr => pr_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .mr => mr_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .examples => examples_cmd.run(ctx, args[1..], stdout, stderr),
         .shellenv => shellenv_cmd.run(ctx, args[1..], stdout, stderr),
         .init => init_cmd.run(ctx, args[1..], stdout, stderr),
-        .jump => jump_cmd.run(ctx, args[1..], stdout, stderr),
+        .switch_cmd => switch_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
+        .step => step_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .ui => ui_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
     };
 }
@@ -119,7 +128,7 @@ const ParsedRootArgs = struct {
 fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !ParsedRootArgs {
     var cli_config_path: ?[]const u8 = null;
     var output_format: output.Format = .text;
-    var root_help = false;
+    const root_help = false;
     var positional: std.ArrayList([]const u8) = .empty;
     errdefer positional.deinit(allocator);
 
@@ -128,7 +137,7 @@ fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !Parsed
         const arg = args[index];
 
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
-            root_help = true;
+            try positional.append(allocator, arg);
             continue;
         }
 
@@ -180,6 +189,15 @@ test "parseRootArgs handles format anywhere" {
     defer parsed.deinit(std.testing.allocator);
     try std.testing.expectEqual(output.Format.json, parsed.output_format);
     try std.testing.expectEqualStrings("help", parsed.positional[0]);
+}
+
+test "parseRootArgs leaves command help positional" {
+    var parsed = try parseRootArgs(std.testing.allocator, &.{ "switch", "--help" });
+    defer parsed.deinit(std.testing.allocator);
+    try std.testing.expect(!parsed.root_help);
+    try std.testing.expectEqual(2, parsed.positional.len);
+    try std.testing.expectEqualStrings("switch", parsed.positional[0]);
+    try std.testing.expectEqualStrings("--help", parsed.positional[1]);
 }
 
 test "parseRootArgs rejects missing format value" {

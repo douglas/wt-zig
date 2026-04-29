@@ -26,6 +26,8 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
                 .root = cfg.root,
                 .separator = cfg.separator,
                 .copy_strategy = copy_strategy,
+                .copy_ignored_exclude = cfg.step.copy_ignored.exclude,
+                .aliases = cfg.aliases,
                 .repo_config_path = repo_config_path,
                 .repo_config_status = repo_status,
             },
@@ -96,8 +98,14 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
         try stdout.writeAll("Hooks:\n");
         try printHookGroup("pre_create", cfg.hooks.pre_create, stdout, ctx.allocator);
         try printHookGroup("post_create", cfg.hooks.post_create, stdout, ctx.allocator);
+        try printHookGroup("pre_start", cfg.hooks.pre_start, stdout, ctx.allocator);
+        try printHookGroup("post_start", cfg.hooks.post_start, stdout, ctx.allocator);
+        try printHookGroup("pre_commit", cfg.hooks.pre_commit, stdout, ctx.allocator);
+        try printHookGroup("post_commit", cfg.hooks.post_commit, stdout, ctx.allocator);
         try printHookGroup("pre_checkout", cfg.hooks.pre_checkout, stdout, ctx.allocator);
         try printHookGroup("post_checkout", cfg.hooks.post_checkout, stdout, ctx.allocator);
+        try printHookGroup("pre_merge", cfg.hooks.pre_merge, stdout, ctx.allocator);
+        try printHookGroup("post_merge", cfg.hooks.post_merge, stdout, ctx.allocator);
         try printHookGroup("pre_remove", cfg.hooks.pre_remove, stdout, ctx.allocator);
         try printHookGroup("post_remove", cfg.hooks.post_remove, stdout, ctx.allocator);
         try printHookGroup("pre_pr", cfg.hooks.pre_pr, stdout, ctx.allocator);
@@ -109,14 +117,37 @@ pub fn run(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.Io.Wri
         try stdout.writeAll("Hooks:    (none configured)\n\n");
     }
 
+    if (cfg.aliases.len > 0) {
+        try stdout.writeAll("Aliases:\n");
+        for (cfg.aliases) |alias| {
+            try stdout.print("  {s}: ", .{alias.name});
+            for (alias.commands, 0..) |command, index| {
+                if (index != 0) try stdout.writeAll(" && ");
+                const safe = prompt.sanitizeForTerminal(ctx.allocator, command) catch command;
+                defer if (safe.ptr != command.ptr) ctx.allocator.free(safe);
+                try stdout.print("{s}", .{safe});
+            }
+            try stdout.writeByte('\n');
+        }
+        try stdout.writeByte('\n');
+    } else {
+        try stdout.writeAll("Aliases:  (none configured)\n\n");
+    }
+
     return 0;
 }
 
 fn hasHooks(hooks: config.Hooks) bool {
     return hooks.pre_create.len != 0 or
         hooks.post_create.len != 0 or
+        hooks.pre_start.len != 0 or
+        hooks.post_start.len != 0 or
+        hooks.pre_commit.len != 0 or
+        hooks.post_commit.len != 0 or
         hooks.pre_checkout.len != 0 or
         hooks.post_checkout.len != 0 or
+        hooks.pre_merge.len != 0 or
+        hooks.post_merge.len != 0 or
         hooks.pre_remove.len != 0 or
         hooks.post_remove.len != 0 or
         hooks.pre_pr.len != 0 or
@@ -131,4 +162,12 @@ fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.I
         defer if (safe.ptr != command.ptr) allocator.free(safe);
         try writer.print("  {s}: {s}\n", .{ name, safe });
     }
+}
+
+test "hasHooks includes start hooks" {
+    var hooks = config.testing_defaults.hooks;
+    try std.testing.expect(!hasHooks(hooks));
+
+    hooks.pre_start = &.{"echo start"};
+    try std.testing.expect(hasHooks(hooks));
 }

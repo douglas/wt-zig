@@ -55,7 +55,7 @@ fn navigate(ctx: output.Context, entry: worktree.Entry, stdout: *std.Io.Writer) 
 /// If a tier has exactly one match, return it. If a tier has multiple matches,
 /// pick the one with the shortest branch name (most specific). If no tier
 /// matches, return null.
-fn findBestMatch(
+pub fn findBestMatch(
     allocator: std.mem.Allocator,
     entries: []const worktree.Entry,
     query: []const u8,

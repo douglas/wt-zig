@@ -93,6 +93,14 @@ pub fn run(
             }
             return 1;
         },
+        error.StartHookFailed => {
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt checkout", "pre-start hook failed");
+            } else {
+                try stderr.writeAll("pre-start hook failed\n");
+            }
+            return 1;
+        },
         error.GitCommandFailed => return 1,
         else => return err,
     };
@@ -192,6 +200,11 @@ pub fn checkoutBranch(
     }
 
     hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
+
+    hooks.runStartHooks(allocator, cfg, info, branch, target_path, stderr) catch |err| switch (err) {
+        error.HookCommandFailed => return error.StartHookFailed,
+        else => return err,
+    };
 
     return .{
         .path = target_path,

@@ -3,7 +3,7 @@ const output = @import("../output.zig");
 const proc = @import("../process.zig");
 const worktree = @import("../git/worktree.zig");
 
-const WorktreeStatus = struct {
+pub const WorktreeStatus = struct {
     path: []const u8,
     branch: []const u8,
     head: ?[]const u8 = null,
@@ -25,13 +25,32 @@ pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer
     const cwd = std.process.getCwdAlloc(ctx.allocator) catch "";
     defer if (cwd.len != 0) ctx.allocator.free(cwd);
 
-    var statuses = std.ArrayList(WorktreeStatus).empty;
-    defer statuses.deinit(ctx.allocator);
+    const statuses = try collect(ctx.allocator, listed.entries, cwd);
+    defer ctx.allocator.free(statuses);
 
-    for (listed.entries) |entry| {
-        const dirty = try getDirtyState(ctx.allocator, entry.path);
-        const tracking = try getAheadBehind(ctx.allocator, entry.path);
-        try statuses.append(ctx.allocator, .{
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt status", .{ .worktrees = statuses });
+        return 0;
+    }
+
+    for (statuses) |status| {
+        try printStatusLine(stdout, status);
+    }
+    return 0;
+}
+
+pub fn collect(
+    allocator: std.mem.Allocator,
+    entries: []const worktree.Entry,
+    cwd: []const u8,
+) ![]WorktreeStatus {
+    var statuses = std.ArrayList(WorktreeStatus).empty;
+    errdefer statuses.deinit(allocator);
+
+    for (entries) |entry| {
+        const dirty = try getDirtyState(allocator, entry.path);
+        const tracking = try getAheadBehind(allocator, entry.path);
+        try statuses.append(allocator, .{
             .path = entry.path,
             .branch = entry.branch orelse "(detached)",
             .head = entry.head,
@@ -43,18 +62,10 @@ pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer
         });
     }
 
-    if (output.isJson(ctx)) {
-        try output.emitSuccess(ctx, stdout, "wt status", .{ .worktrees = statuses.items });
-        return 0;
-    }
-
-    for (statuses.items) |status| {
-        try printStatusLine(stdout, status);
-    }
-    return 0;
+    return statuses.toOwnedSlice(allocator);
 }
 
-fn printStatusLine(stdout: *std.Io.Writer, status: WorktreeStatus) !void {
+pub fn printStatusLine(stdout: *std.Io.Writer, status: WorktreeStatus) !void {
     if (!isColorEnabled()) {
         return printStatusLinePlain(stdout, status);
     }

@@ -23,6 +23,43 @@ const Topic = struct {
     examples: []const UsageExample,
 };
 
+const switch_examples = [_]UsageExample{
+    .{
+        .command = "wt switch feature-branch",
+        .purpose = "Switch to an existing worktree by fuzzy branch match, or checkout an existing branch into a new worktree.",
+        .outcome = "The target worktree exists and text mode emits a navigate_to marker for shell auto-cd.",
+        .exit_code = "0 on success; non-zero if the branch does not exist or git worktree creation fails.",
+        .text_example = "Switching to worktree: $WORKTREE_ROOT/<repo>/feature-branch\nwt navigating to: $WORKTREE_ROOT/<repo>/feature-branch",
+        .preconditions = &.{"Run inside a git repository."},
+        .side_effects = &.{"In text mode with shellenv, the wrapper may auto-navigate to the target path."},
+        .failure_modes = &.{"Branch does not exist: use wt switch --create <branch> to create it."},
+        .follow_up = &.{ "wt status", "wt done" },
+    },
+    .{
+        .command = "wt switch --create my-feature --base develop",
+        .purpose = "Create a new branch from an explicit base branch and switch into its worktree.",
+        .outcome = "The new branch exists, the worktree directory is created, and shell integration can navigate there.",
+        .exit_code = "0 on success; non-zero if the base branch is missing or the path conflicts.",
+        .json_example = "{\"ok\":true,\"command\":\"wt switch\",\"data\":{\"status\":\"created\",\"branch\":\"my-feature\",\"base\":\"develop\",\"path\":\"$WORKTREE_ROOT/<repo>/my-feature\",\"navigate_to\":\"$WORKTREE_ROOT/<repo>/my-feature\"}}",
+        .failure_modes = &.{ "Base branch missing.", "Worktree path conflict.", "pre_create hook failure." },
+    },
+    .{
+        .command = "wt switch --create my-feature -x claude -- 'Implement this'",
+        .purpose = "Create or switch to a worktree and run a command there.",
+        .outcome = "Shell integration navigates to the worktree, then runs the command from the execute directive; direct binary use runs the command in the target worktree.",
+        .exit_code = "0 on successful switch plus execute command; non-zero if switch or execute fails.",
+        .text_example = "Worktree created at: $WORKTREE_ROOT/<repo>/my-feature\nwt navigating to: $WORKTREE_ROOT/<repo>/my-feature",
+        .notes = &.{"Trailing args after -- are shell-quoted and appended to the execute command."},
+    },
+    .{
+        .command = "wt switch ^",
+        .purpose = "Navigate to the main worktree using the Worktrunk-style main shortcut.",
+        .outcome = "Text mode emits the main worktree path and navigation marker.",
+        .exit_code = "0 on success.",
+        .notes = &.{"`wt switch @` targets the current worktree, `wt switch -` targets the worktree containing OLDPWD, and `wt switch pr:123` / `mr:123` route to PR/MR checkout."},
+    },
+};
+
 const checkout_examples = [_]UsageExample{
     .{
         .command = "wt checkout feature-branch",
@@ -142,20 +179,36 @@ const list_examples = [_]UsageExample{
         .exit_code = "0 on success.",
         .json_example = "{\"ok\":true,\"command\":\"wt list\",\"data\":{\"worktrees\":[{\"path\":\"$WORKTREE_ROOT/<repo>\",\"branch\":\"main\",\"head\":\"a1b2c3d\"}]}}",
     },
+    .{
+        .command = "wt list --full",
+        .purpose = "Inspect worktrees with local status metadata.",
+        .outcome = "Each row includes current marker, branch, path, dirty/clean state, and upstream ahead/behind counts.",
+        .exit_code = "0 on success.",
+        .text_example = "* main /repo clean ^0 v0\n  feature-login /worktrees/repo/feature-login dirty ^2 v0",
+        .failure_modes = &.{"Outside a git repository the command fails."},
+    },
 };
 
 const remove_examples = [_]UsageExample{
     .{
         .command = "wt remove old-branch",
         .purpose = "Delete a worktree for a branch and clean up directory bookkeeping.",
-        .outcome = "The branch worktree path is removed; text mode may navigate back to the main worktree.",
+        .outcome = "The branch worktree path is removed; if the branch is safely integrated with the default base, the branch is deleted too.",
         .exit_code = "0 on success; non-zero if the branch has no worktree or removal fails.",
-        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/old-branch\nwt navigating to: <main-worktree-path>",
+        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/old-branch\nDeleted branch: old-branch (ancestor_of_base)\nwt navigating to: <main-worktree-path>",
         .path_example = "global: $WORKTREE_ROOT/<repo>/old-branch -> (removed)\nsibling-repo: <repo-main-parent>/<repo>-old-branch -> (removed)\nparent-branches: <repo-main-parent>/old-branch -> (removed)\nparent-worktrees: <repo-main-parent>/<repo>.worktrees/old-branch -> (removed)\ncustom pattern: $WORKTREE_ROOT/custom/<repo>/old-branch -> (removed)",
         .path_basis = "Static placeholders for one branch across strategies. <repo-main-parent> contains the main checkout at <repo-main-parent>/<repo>.",
         .preconditions = &.{"The target branch currently has a linked worktree."},
-        .failure_modes = &.{ "Dirty worktree may require --force in the Go CLI.", "No matching worktree for the branch." },
+        .failure_modes = &.{ "Dirty worktree may require --force.", "No matching worktree for the branch.", "Unsafe branches are kept unless --force-delete is passed." },
         .follow_up = &.{"wt list"},
+    },
+    .{
+        .command = "wt remove old-branch --no-delete-branch",
+        .purpose = "Remove the worktree but keep the branch regardless of integration state.",
+        .outcome = "The worktree is removed and the branch is explicitly retained.",
+        .exit_code = "0 on success; non-zero if the branch has no worktree or removal fails.",
+        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/old-branch\nKept branch: old-branch (disabled)",
+        .notes = &.{"Use --force-delete or -D when you intentionally want to delete an unsafe branch."},
     },
     .{
         .command = "wt rm",
@@ -170,9 +223,9 @@ const remove_examples = [_]UsageExample{
     .{
         .command = "wt --format json remove old-branch",
         .purpose = "Reference machine-readable removal flow.",
-        .outcome = "JSON envelope with removed path and navigate_to target.",
+        .outcome = "JSON envelope with removed path, navigate_to target, and branch cleanup metadata.",
         .exit_code = "0 on success; non-zero on failure.",
-        .json_example = "{\"ok\":true,\"command\":\"wt remove\",\"data\":{\"status\":\"removed\",\"branch\":\"old-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/old-branch\",\"navigate_to\":\"<main-worktree-path>\"}}",
+        .json_example = "{\"ok\":true,\"command\":\"wt remove\",\"data\":{\"status\":\"removed\",\"branch\":\"old-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/old-branch\",\"navigate_to\":\"<main-worktree-path>\",\"branch_deleted\":true,\"branch_delete_reason\":\"ancestor_of_base\"}}",
         .failure_modes = &.{"JSON mode requires an explicit branch argument; there is no interactive selector."},
     },
 };
@@ -181,9 +234,9 @@ const done_examples = [_]UsageExample{
     .{
         .command = "wt done",
         .purpose = "Remove the linked worktree for your current directory and navigate back.",
-        .outcome = "The current linked worktree is removed and text mode emits a navigate_to marker for the main checkout.",
+        .outcome = "The current linked worktree is removed, the branch is deleted when safe, and text mode emits a navigate_to marker for the main checkout.",
         .exit_code = "0 on success; non-zero if run outside a linked worktree or if removal fails.",
-        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/feature-branch\nwt navigating to: <main-worktree-path>",
+        .text_example = "Removed worktree: $WORKTREE_ROOT/<repo>/feature-branch\nDeleted branch: feature-branch (ancestor_of_base)\nwt navigating to: <main-worktree-path>",
         .preconditions = &.{"Run inside a linked (non-main) worktree."},
         .failure_modes = &.{
             "Running in the main checkout is rejected.",
@@ -194,9 +247,9 @@ const done_examples = [_]UsageExample{
     .{
         .command = "wt --format json done --force",
         .purpose = "Reference machine-readable current-worktree removal output.",
-        .outcome = "JSON envelope with removed branch/path and navigate_to target.",
+        .outcome = "JSON envelope with removed branch/path, navigate_to target, and branch cleanup metadata.",
         .exit_code = "0 on success; non-zero on failure.",
-        .json_example = "{\"ok\":true,\"command\":\"wt done\",\"data\":{\"status\":\"removed\",\"branch\":\"feature-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/feature-branch\",\"navigate_to\":\"<main-worktree-path>\"}}",
+        .json_example = "{\"ok\":true,\"command\":\"wt done\",\"data\":{\"status\":\"removed\",\"branch\":\"feature-branch\",\"path\":\"$WORKTREE_ROOT/<repo>/feature-branch\",\"navigate_to\":\"<main-worktree-path>\",\"branch_deleted\":false,\"branch_retained_reason\":\"unsafe\"}}",
     },
 };
 
@@ -260,6 +313,65 @@ const cleanup_examples = [_]UsageExample{
     },
 };
 
+const step_examples = [_]UsageExample{
+    .{
+        .command = "wt step diff",
+        .purpose = "Show every change since branching from the default base.",
+        .outcome = "Prints raw git diff output covering committed, staged, unstaged, and untracked files.",
+        .exit_code = "0 on success; non-zero if the target ref is missing or has no merge base.",
+        .text_example = "diff --git a/new.txt b/new.txt\nnew file mode 100644\n...",
+        .preconditions = &.{"Run inside a git worktree with a default base branch such as main."},
+        .side_effects = &.{"Uses a temporary Git index so the real staging area is not changed."},
+        .follow_up = &.{ "wt step diff -- --stat", "wt step diff main -- --name-only" },
+    },
+    .{
+        .command = "wt step diff main -- --stat",
+        .purpose = "Forward extra arguments to git diff.",
+        .outcome = "Prints git diff --stat from the merge base with main, including untracked files.",
+        .exit_code = "Uses git diff's exit code when forwarded flags request one.",
+        .text_example = " README.md     | 2 +-\n untracked.txt | 1 +",
+        .failure_modes = &.{"Arguments intended for git diff must appear after --."},
+    },
+    .{
+        .command = "wt step copy-ignored --dry-run",
+        .purpose = "Preview ignored files that would be copied from the main worktree into the current worktree.",
+        .outcome = "Prints copy candidates without writing files.",
+        .exit_code = "0 on success; non-zero if source or destination worktrees cannot be resolved.",
+        .notes = &.{"Use `.worktreeinclude` to opt into selected ignored paths and `[step.copy-ignored].exclude` to skip noisy matches."},
+    },
+    .{
+        .command = "wt step commit --message \"ship it\" --stage tracked",
+        .purpose = "Commit selected changes using an explicit message.",
+        .outcome = "Stages according to --stage and creates a commit in the current worktree.",
+        .exit_code = "0 on success; non-zero if staging, hooks, or git commit fail.",
+        .notes = &.{"--stage accepts all, tracked, or none; the default is all."},
+    },
+    .{
+        .command = "wt step squash main --message \"one commit\"",
+        .purpose = "Squash current branch changes since the target into a single commit.",
+        .outcome = "Resets changes since the merge base into one commit in the current worktree.",
+        .exit_code = "0 on success; non-zero if merge-base resolution, staging, hooks, or commit fail.",
+    },
+    .{
+        .command = "wt step rebase main",
+        .purpose = "Rebase the current branch onto a target branch.",
+        .outcome = "Runs git rebase against the target and reports success in text or JSON mode.",
+        .exit_code = "Uses git rebase's success or failure.",
+    },
+    .{
+        .command = "wt step push main",
+        .purpose = "Fast-forward a target branch to the current branch.",
+        .outcome = "Updates the target branch when it can be fast-forwarded from the current branch.",
+        .exit_code = "0 on success; non-zero if the target is not an ancestor or cannot be updated.",
+    },
+    .{
+        .command = "wt step prune --dry-run",
+        .purpose = "Use the step wrapper for merged-worktree cleanup.",
+        .outcome = "Delegates to `wt cleanup --dry-run`, listing merged worktrees that would be removed.",
+        .exit_code = "Matches the delegated cleanup command.",
+    },
+};
+
 const examples_examples = [_]UsageExample{
     .{
         .command = "wt examples",
@@ -312,6 +424,39 @@ const migrate_examples = [_]UsageExample{
         .outcome = "JSON envelope reporting totals, migrated entries, skipped entries, and failures.",
         .exit_code = "0 when migration completes; non-zero on fatal errors.",
         .json_example = "{\"ok\":true,\"command\":\"wt migrate\",\"data\":{\"force\":true,\"total\":4,\"migrated\":4,\"skipped\":0,\"failed\":0}}",
+    },
+};
+
+const merge_examples = [_]UsageExample{
+    .{
+        .command = "wt merge",
+        .purpose = "Merge the current branch into the default branch and clean up the source worktree.",
+        .outcome = "The target branch is updated, the source worktree is removed, the source branch is deleted when safe, and shell integration navigates to the target worktree.",
+        .exit_code = "0 on successful merge and cleanup; non-zero on git merge or removal failure.",
+        .text_example = "Merging feature into main...\nMerged feature into main @ a1b2c3d4\nRemoved worktree: $WORKTREE_ROOT/<repo>/feature\nDeleted branch: feature (same_commit)\nwt navigating to: <main-worktree-path>",
+        .preconditions = &.{ "Run from a local source branch.", "Target branch exists.", "Git can merge the source into the target." },
+        .failure_modes = &.{"Conflicts or non-fast-forward situations fail unless handled manually or --no-ff is usable with a target worktree."},
+    },
+    .{
+        .command = "wt merge develop --no-remove",
+        .purpose = "Merge into a non-default target while keeping the source worktree.",
+        .outcome = "The target branch is updated and the source worktree remains available.",
+        .exit_code = "0 on successful merge.",
+        .notes = &.{"Default merge behavior stays compatible; pipeline steps do not run unless their flags are provided."},
+    },
+    .{
+        .command = "wt merge main --rebase --push",
+        .purpose = "Opt into merge pipeline steps before and after integration.",
+        .outcome = "Rebases the source branch onto main, merges it, then pushes from the target worktree/path.",
+        .exit_code = "0 when all requested steps succeed; non-zero as soon as a requested git step fails.",
+        .notes = &.{"`--squash` is also opt-in and requires `--message`/`-m`."},
+    },
+    .{
+        .command = "wt merge main --squash --message \"land feature\"",
+        .purpose = "Squash branch work before merging.",
+        .outcome = "Creates a squash commit in the source worktree, then merges that branch into the target.",
+        .exit_code = "0 when squash, merge, and cleanup succeed.",
+        .failure_modes = &.{"`--squash` without `--message` is rejected."},
     },
 };
 
@@ -394,6 +539,13 @@ const config_examples = [_]UsageExample{
         .exit_code = "0 on success.",
         .json_example = "{\"ok\":true,\"command\":\"wt config show\",\"data\":{\"effective\":{\"root\":{\"value\":\"$WORKTREE_ROOT\",\"source\":\"env WORKTREE_ROOT\"}}}}",
     },
+    .{
+        .command = "wt recent",
+        .purpose = "Run a configured alias from `[aliases] recent = \"git branch --sort=-committerdate\"`.",
+        .outcome = "Executes the alias shell command; repo aliases override global aliases with the same name.",
+        .exit_code = "Uses the alias command's exit code.",
+        .notes = &.{"For array aliases, commands run serially and extra CLI args are appended to the last command."},
+    },
 };
 
 const version_examples = [_]UsageExample{
@@ -414,6 +566,7 @@ const version_examples = [_]UsageExample{
 };
 
 const topics = [_]Topic{
+    .{ .name = "switch", .description = "Switch to, create, or checkout a worktree", .examples = &switch_examples },
     .{ .name = "checkout", .description = "Checkout an existing branch in a worktree", .examples = &checkout_examples },
     .{ .name = "cleanup", .description = "Remove worktrees for merged branches", .examples = &cleanup_examples },
     .{ .name = "config", .description = "Manage configuration file", .examples = &config_examples },
@@ -424,11 +577,13 @@ const topics = [_]Topic{
     .{ .name = "init", .description = "Initialize shell integration", .examples = &init_examples },
     .{ .name = "list", .description = "List all worktrees", .examples = &list_examples },
     .{ .name = "migrate", .description = "Migrate existing worktrees to configured paths", .examples = &migrate_examples },
+    .{ .name = "merge", .description = "Merge current branch into a target branch", .examples = &merge_examples },
     .{ .name = "mr", .description = "Checkout GitLab MR branch in a worktree", .examples = &mr_examples },
     .{ .name = "pr", .description = "Checkout GitHub PR branch in a worktree", .examples = &pr_examples },
     .{ .name = "prune", .description = "Remove stale worktree administrative files", .examples = &prune_examples },
     .{ .name = "remove", .description = "Remove a worktree", .examples = &remove_examples },
     .{ .name = "shellenv", .description = "Output shell wrapper for auto-navigation and completion", .examples = &shellenv_examples },
+    .{ .name = "step", .description = "Run focused workflow steps", .examples = &step_examples },
     .{ .name = "ui", .description = "Open interactive gum-powered worktree UI", .examples = &ui_examples },
     .{ .name = "version", .description = "Show wt version", .examples = &version_examples },
 };

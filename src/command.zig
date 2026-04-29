@@ -14,6 +14,7 @@ pub const Kind = enum {
     remove,
     prune,
     cleanup,
+    merge,
     migrate,
     pr,
     mr,
@@ -21,7 +22,8 @@ pub const Kind = enum {
     shellenv,
     init,
     done,
-    jump,
+    switch_cmd,
+    step,
     ui,
 };
 
@@ -60,8 +62,8 @@ pub const all = [_]Spec{
         .aliases = &.{"ls"},
         .display = "list, ls",
         .summary = "List worktrees using `git worktree list --porcelain`",
-        .usage = "wt list",
-        .details = "Read Git's porcelain worktree output, parse it, and render a small text summary.",
+        .usage = "wt list [--full]",
+        .details = "Read Git's porcelain worktree output, parse it, and render a small text summary. Use --full to include current, dirty, and upstream ahead/behind status for each worktree.",
     },
     .{
         .kind = .status,
@@ -132,8 +134,8 @@ pub const all = [_]Spec{
         .aliases = &.{"rm"},
         .display = "remove, rm",
         .summary = "Remove a linked worktree for a branch",
-        .usage = "wt remove [branch] [--force|-f]",
-        .details = "Remove an existing linked worktree, optionally force the underlying git removal, and prompt for branch selection in text mode when no branch is given.",
+        .usage = "wt remove [branches...] [--force|-f] [--no-delete-branch] [--force-delete|-D]",
+        .details = "Remove one or more linked worktrees, optionally force worktree removal, and delete the branch when it is safe. Use --no-delete-branch to keep branches or --force-delete to delete them even when unsafe.",
     },
     .{
         .kind = .prune,
@@ -152,6 +154,15 @@ pub const all = [_]Spec{
         .summary = "Remove worktrees for merged branches",
         .usage = "wt cleanup [--dry-run] [--force|-f] [--stale] [--stale-days <days>]",
         .details = "Find linked worktrees whose branches are merged into the default base branch; with --stale also include branches with deleted remotes or old commits.",
+    },
+    .{
+        .kind = .merge,
+        .name = "merge",
+        .aliases = &.{},
+        .display = "merge",
+        .summary = "Merge current branch into a target branch",
+        .usage = "wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]",
+        .details = "Merge the current branch into the target branch, which defaults to the default base. Fast-forward merges are used by default; --no-ff creates a merge commit when the target branch has a worktree. Opt into pipeline steps with --squash, --rebase, and --push. Removes the source worktree after merge unless --no-remove is passed.",
     },
     .{
         .kind = .migrate,
@@ -213,17 +224,26 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "done",
         .summary = "Remove the current linked worktree and navigate back",
-        .usage = "wt done [--force|-f]",
-        .details = "Detect the linked worktree for the current directory, remove it using the standard removal flow (hooks and cleanup), and navigate back to the main project directory.",
+        .usage = "wt done [--force|-f] [--no-delete-branch] [--force-delete|-D]",
+        .details = "Detect the linked worktree for the current directory, remove it using the standard removal flow (hooks and cleanup), safely delete the branch by default, and navigate back to the main project directory.",
     },
     .{
-        .kind = .jump,
-        .name = "jump",
-        .aliases = &.{ "j", "cd" },
-        .display = "jump, j, cd",
-        .summary = "Navigate to an existing worktree by branch name",
-        .usage = "wt jump [query]",
-        .details = "Find a worktree matching the query using exact, word-boundary, substring, or fuzzy matching, then navigate to it. Without a query, shows an interactive picker.",
+        .kind = .switch_cmd,
+        .name = "switch",
+        .aliases = &.{ "sw", "cd", "jump", "j" },
+        .display = "switch, sw, cd, jump, j",
+        .summary = "Switch to, create, or checkout a worktree",
+        .usage = "wt switch [--create|-c] [--base <branch>] [--execute|-x <command>] <branch|^|@|-|pr:N|mr:N> [-- <args>...]",
+        .details = "Navigate to an existing worktree by branch name, create a new branch with --create, checkout an existing branch into a worktree, or use shortcuts like ^ for the main worktree, @ for the current worktree, - for OLDPWD, pr:N, and mr:N. Use --execute to run a shell command after switching.",
+    },
+    .{
+        .kind = .step,
+        .name = "step",
+        .aliases = &.{},
+        .display = "step",
+        .summary = "Run focused workflow steps",
+        .usage = "wt step <commit|squash|rebase|push|diff|copy-ignored|prune> ...",
+        .details = "Run workflow subcommands. `wt step commit`, `squash`, `rebase`, and `push` provide deterministic git-backed workflow primitives. `wt step diff` shows all changes since branching, including committed, staged, unstaged, and untracked files. `wt step copy-ignored` copies gitignored files and directories between worktrees, optionally constrained by `.worktreeinclude`.",
     },
     .{
         .kind = .ui,
@@ -257,7 +277,12 @@ test "find resolves aliases" {
     try std.testing.expectEqual(Kind.list, spec.kind);
 }
 
-test "find resolves jump cd alias" {
+test "find resolves switch cd alias" {
     const spec = find("cd") orelse return error.TestUnexpectedResult;
-    try std.testing.expectEqual(Kind.jump, spec.kind);
+    try std.testing.expectEqual(Kind.switch_cmd, spec.kind);
+}
+
+test "find resolves legacy jump alias to switch" {
+    const spec = find("jump") orelse return error.TestUnexpectedResult;
+    try std.testing.expectEqual(Kind.switch_cmd, spec.kind);
 }

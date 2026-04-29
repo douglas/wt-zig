@@ -16,17 +16,36 @@ pub const CopyFiles = struct {
     repo_overrides: []const CopyFilesRepoOverride = &.{},
 };
 
+pub const StepCopyIgnored = struct {
+    exclude: []const []const u8 = &.{},
+};
+
+pub const Step = struct {
+    copy_ignored: StepCopyIgnored = .{},
+};
+
 pub const Hooks = struct {
     pre_create: []const []const u8 = &.{},
     post_create: []const []const u8 = &.{},
+    pre_start: []const []const u8 = &.{},
+    post_start: []const []const u8 = &.{},
+    pre_commit: []const []const u8 = &.{},
+    post_commit: []const []const u8 = &.{},
     pre_checkout: []const []const u8 = &.{},
     post_checkout: []const []const u8 = &.{},
+    pre_merge: []const []const u8 = &.{},
+    post_merge: []const []const u8 = &.{},
     pre_remove: []const []const u8 = &.{},
     post_remove: []const []const u8 = &.{},
     pre_pr: []const []const u8 = &.{},
     post_pr: []const []const u8 = &.{},
     pre_mr: []const []const u8 = &.{},
     post_mr: []const []const u8 = &.{},
+};
+
+pub const Alias = struct {
+    name: []const u8,
+    commands: []const []const u8,
 };
 
 pub const Sources = struct {
@@ -42,7 +61,9 @@ pub const Resolved = struct {
     pattern: []const u8,
     separator: []const u8,
     hooks: Hooks,
+    aliases: []const Alias = &.{},
     copy_files: CopyFiles = .{},
+    step: Step = .{},
     config_file_path: []const u8,
     config_file_found: bool,
     config_repo_path: []const u8 = "",
@@ -70,6 +91,7 @@ pub const testing_defaults = Resolved{
     .pattern = "",
     .separator = "/",
     .hooks = .{},
+    .aliases = &.{},
     .config_file_path = "/tmp/config.toml",
     .config_file_found = false,
     .config_repo_path = "",

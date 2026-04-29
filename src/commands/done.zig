@@ -7,6 +7,7 @@ const worktree = @import("../git/worktree.zig");
 
 const ParsedArgs = struct {
     force: bool = false,
+    branch_cleanup: remove.BranchCleanupMode = .delete_if_safe,
 };
 
 pub fn run(
@@ -18,7 +19,7 @@ pub fn run(
 ) !u8 {
     const allocator = ctx.allocator;
     const parsed = parseArgs(args) catch {
-        return output.usageError(ctx, stdout, stderr, "wt done", "Usage: wt done [--force|-f]");
+        return output.usageError(ctx, stdout, stderr, "wt done", "Usage: wt done [--force|-f] [--no-delete-branch] [--force-delete|-D]");
     };
 
     const cwd = std.process.getCwdAlloc(allocator) catch {
@@ -48,7 +49,10 @@ pub fn run(
         return 1;
     };
 
-    const outcome = remove.removeWorktree(allocator, cfg, branch, parsed.force, stderr) catch |err| switch (err) {
+    const outcome = remove.removeWorktree(allocator, cfg, branch, .{
+        .force = parsed.force,
+        .branch_cleanup = parsed.branch_cleanup,
+    }, stderr) catch |err| switch (err) {
         error.CannotRemoveMainWorktree => {
             if (output.isJson(ctx)) {
                 try output.emitError(ctx, stdout, "wt done", "cannot remove the main worktree");
@@ -85,11 +89,22 @@ pub fn run(
             .branch = branch,
             .path = outcome.path,
             .navigate_to = outcome.navigate_to,
+            .branch_deleted = outcome.branch_deleted,
+            .branch_delete_reason = outcome.branch_delete_reason,
+            .branch_retained_reason = outcome.branch_retained_reason,
         });
     } else {
         try stdout.writeAll("Removed worktree: ");
         try stdout.writeAll(outcome.path);
         try stdout.writeByte('\n');
+        if (outcome.branch_deleted) {
+            try stdout.print(
+                "Deleted branch: {s} ({s})\n",
+                .{ branch, outcome.branch_delete_reason orelse "deleted" },
+            );
+        } else if (outcome.branch_retained_reason) |reason| {
+            try stdout.print("Kept branch: {s} ({s})\n", .{ branch, reason });
+        }
         if (outcome.navigate_to) |navigate_to| {
             try output.emitNavigateTo(stdout, navigate_to);
         }
@@ -120,6 +135,14 @@ fn parseArgs(args: []const []const u8) !ParsedArgs {
             parsed.force = true;
             continue;
         }
+        if (std.mem.eql(u8, arg, "--no-delete-branch")) {
+            parsed.branch_cleanup = .keep;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--force-delete") or std.mem.eql(u8, arg, "-D")) {
+            parsed.branch_cleanup = .force_delete;
+            continue;
+        }
         return error.InvalidArguments;
     }
     return parsed;
@@ -133,6 +156,14 @@ test "parseArgs accepts no arguments" {
 test "parseArgs accepts force flag" {
     const parsed = try parseArgs(&.{"--force"});
     try std.testing.expect(parsed.force);
+}
+
+test "parseArgs accepts branch cleanup flags" {
+    const keep = try parseArgs(&.{"--no-delete-branch"});
+    try std.testing.expectEqual(remove.BranchCleanupMode.keep, keep.branch_cleanup);
+
+    const force_delete = try parseArgs(&.{"-D"});
+    try std.testing.expectEqual(remove.BranchCleanupMode.force_delete, force_delete.branch_cleanup);
 }
 
 test "parseArgs accepts short force flag" {

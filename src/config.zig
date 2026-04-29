@@ -4,8 +4,11 @@ const support = @import("config_support.zig");
 const types = @import("config_types.zig");
 
 pub const Hooks = types.Hooks;
+pub const Alias = types.Alias;
 pub const CopyFiles = types.CopyFiles;
 pub const CopyFilesRepoOverride = types.CopyFilesRepoOverride;
+pub const Step = types.Step;
+pub const StepCopyIgnored = types.StepCopyIgnored;
 pub const Sources = types.Sources;
 pub const Resolved = types.Resolved;
 pub const LoadResult = types.LoadResult;
@@ -41,6 +44,7 @@ pub fn load(allocator: std.mem.Allocator, options: Options) !LoadResult {
         .pattern = "",
         .separator = "/",
         .hooks = .{},
+        .aliases = &.{},
         .config_file_path = config_path,
         .config_file_found = false,
         .config_repo_path = "",
@@ -93,7 +97,9 @@ fn applyParsedFile(
     }
 
     resolved.hooks = parsed.hooks;
+    resolved.aliases = parsed.aliases;
     resolved.copy_files = parsed.copy_files;
+    resolved.step = parsed.step;
 }
 
 fn applyEnvOverrides(
@@ -154,13 +160,53 @@ fn applyRepoConfig(
     }
 
     mergeHooks(&resolved.hooks, parsed.hooks);
+    resolved.aliases = try mergeAliases(allocator, resolved.aliases, parsed.aliases);
+    if (parsed.step.copy_ignored.exclude.len > 0) {
+        resolved.step.copy_ignored.exclude = parsed.step.copy_ignored.exclude;
+    }
+}
+
+fn mergeAliases(
+    allocator: std.mem.Allocator,
+    base: []const Alias,
+    overrides: []const Alias,
+) ![]const Alias {
+    if (base.len == 0) return overrides;
+    if (overrides.len == 0) return base;
+
+    var merged = std.ArrayList(Alias).empty;
+    errdefer merged.deinit(allocator);
+
+    for (overrides) |alias| {
+        try merged.append(allocator, alias);
+    }
+
+    for (base) |alias| {
+        if (hasAlias(overrides, alias.name)) continue;
+        try merged.append(allocator, alias);
+    }
+
+    return merged.toOwnedSlice(allocator);
+}
+
+fn hasAlias(aliases: []const Alias, name: []const u8) bool {
+    for (aliases) |alias| {
+        if (std.mem.eql(u8, alias.name, name)) return true;
+    }
+    return false;
 }
 
 fn mergeHooks(base: *Hooks, overrides: Hooks) void {
     if (overrides.pre_create.len > 0) base.pre_create = overrides.pre_create;
     if (overrides.post_create.len > 0) base.post_create = overrides.post_create;
+    if (overrides.pre_start.len > 0) base.pre_start = overrides.pre_start;
+    if (overrides.post_start.len > 0) base.post_start = overrides.post_start;
+    if (overrides.pre_commit.len > 0) base.pre_commit = overrides.pre_commit;
+    if (overrides.post_commit.len > 0) base.post_commit = overrides.post_commit;
     if (overrides.pre_checkout.len > 0) base.pre_checkout = overrides.pre_checkout;
     if (overrides.post_checkout.len > 0) base.post_checkout = overrides.post_checkout;
+    if (overrides.pre_merge.len > 0) base.pre_merge = overrides.pre_merge;
+    if (overrides.post_merge.len > 0) base.post_merge = overrides.post_merge;
     if (overrides.pre_remove.len > 0) base.pre_remove = overrides.pre_remove;
     if (overrides.post_remove.len > 0) base.post_remove = overrides.post_remove;
     if (overrides.pre_pr.len > 0) base.pre_pr = overrides.pre_pr;
@@ -244,6 +290,10 @@ test "parseFile reads scalar settings and hooks" {
         \\
         \\[hooks]
         \\post_create = ["echo one", "echo two"]
+        \\pre-start = ["launch"]
+        \\post-start = ["announce"]
+        \\pre_commit = ["check"]
+        \\post_merge = ["notify"]
         \\pre_remove = ["cleanup"]
         \\
         ,
@@ -258,7 +308,62 @@ test "parseFile reads scalar settings and hooks" {
     try std.testing.expectEqualStrings("SIBLING-REPO", parsed.strategy.?);
     try std.testing.expectEqualStrings("-", parsed.separator.?);
     try std.testing.expectEqual(2, parsed.hooks.post_create.len);
+    try std.testing.expectEqualStrings("launch", parsed.hooks.pre_start[0]);
+    try std.testing.expectEqualStrings("announce", parsed.hooks.post_start[0]);
+    try std.testing.expectEqualStrings("check", parsed.hooks.pre_commit[0]);
+    try std.testing.expectEqualStrings("notify", parsed.hooks.post_merge[0]);
     try std.testing.expectEqualStrings("cleanup", parsed.hooks.pre_remove[0]);
+}
+
+test "parseFile reads aliases as strings and arrays" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{
+        .sub_path = "config.toml",
+        .data =
+        \\[aliases]
+        \\recent = "git branch --sort=-committerdate"
+        \\ship = ["git status --short", "git push"]
+        \\
+        ,
+    });
+
+    const config_path = try dir.dir.realpathAlloc(allocator, "config.toml");
+    defer allocator.free(config_path);
+
+    var parsed = try parseFile(allocator, config_path);
+    defer parsed.deinit(allocator);
+
+    try std.testing.expectEqual(2, parsed.aliases.len);
+    try std.testing.expectEqualStrings("recent", parsed.aliases[0].name);
+    try std.testing.expectEqual(1, parsed.aliases[0].commands.len);
+    try std.testing.expectEqualStrings("git branch --sort=-committerdate", parsed.aliases[0].commands[0]);
+    try std.testing.expectEqualStrings("ship", parsed.aliases[1].name);
+    try std.testing.expectEqual(2, parsed.aliases[1].commands.len);
+    try std.testing.expectEqualStrings("git status --short", parsed.aliases[1].commands[0]);
+    try std.testing.expectEqualStrings("git push", parsed.aliases[1].commands[1]);
+}
+
+test "mergeAliases lets repo aliases override global aliases" {
+    const allocator = std.testing.allocator;
+    const base = &[_]Alias{
+        .{ .name = "ship", .commands = &.{"git push"} },
+        .{ .name = "recent", .commands = &.{"git branch"} },
+    };
+    const overrides = &[_]Alias{
+        .{ .name = "ship", .commands = &.{ "git status", "git push" } },
+    };
+
+    const merged = try mergeAliases(allocator, base, overrides);
+    defer allocator.free(merged);
+
+    try std.testing.expectEqual(2, merged.len);
+    try std.testing.expectEqualStrings("ship", merged[0].name);
+    try std.testing.expectEqual(2, merged[0].commands.len);
+    try std.testing.expectEqualStrings("git status", merged[0].commands[0]);
+    try std.testing.expectEqualStrings("recent", merged[1].name);
 }
 
 test "parseFile reads copy_files with global and per-repo paths" {
@@ -281,6 +386,9 @@ test "parseFile reads copy_files with global and per-repo paths" {
         \\
         \\[copy_files.other-repo]
         \\paths = ["secrets.yml"]
+        \\
+        \\[step.copy-ignored]
+        \\exclude = ["tmp/", "*.sqlite", "!tmp/keep.sqlite"]
         \\
         ,
     });
@@ -311,6 +419,35 @@ test "parseFile reads copy_files with global and per-repo paths" {
     try std.testing.expectEqualStrings("other-repo", parsed.copy_files.repo_overrides[1].repo_name);
     try std.testing.expectEqual(1, parsed.copy_files.repo_overrides[1].paths.len);
     try std.testing.expectEqualStrings("secrets.yml", parsed.copy_files.repo_overrides[1].paths[0]);
+
+    try std.testing.expectEqual(3, parsed.step.copy_ignored.exclude.len);
+    try std.testing.expectEqualStrings("tmp/", parsed.step.copy_ignored.exclude[0]);
+    try std.testing.expectEqualStrings("*.sqlite", parsed.step.copy_ignored.exclude[1]);
+    try std.testing.expectEqualStrings("!tmp/keep.sqlite", parsed.step.copy_ignored.exclude[2]);
+}
+
+test "parseFile reads dotted step copy-ignored excludes" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{
+        .sub_path = "config.toml",
+        .data =
+        \\step.copy-ignored.exclude = ["cache/", "*.sqlite"]
+        \\
+        ,
+    });
+
+    const config_path = try dir.dir.realpathAlloc(allocator, "config.toml");
+    defer allocator.free(config_path);
+
+    var parsed = try parseFile(allocator, config_path);
+    defer parsed.deinit(allocator);
+
+    try std.testing.expectEqual(2, parsed.step.copy_ignored.exclude.len);
+    try std.testing.expectEqualStrings("cache/", parsed.step.copy_ignored.exclude[0]);
+    try std.testing.expectEqualStrings("*.sqlite", parsed.step.copy_ignored.exclude[1]);
 }
 
 test "load applies defaults then file then env overrides" {

@@ -58,6 +58,8 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  wt [flags]
         \\  wt [command]
         \\
+        \\Configured [aliases] can also dispatch custom commands.
+        \\
         \\Available Commands:
         \\  checkout    Checkout existing branch in new worktree
         \\  cleanup     Remove worktrees for merged branches
@@ -70,8 +72,8 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  help        Help about any command
         \\  info        Show worktree location configuration
         \\  init        Initialize shell integration
-        \\  jump        Navigate to a worktree by branch name
         \\  list        List all worktrees
+        \\  merge       Merge current branch into a target branch
         \\  migrate     Migrate existing worktrees to configured paths
         \\  mr          Checkout GitLab MR in worktree (uses glab CLI)
         \\  pr          Checkout GitHub PR in worktree (uses gh CLI)
@@ -79,6 +81,8 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  remove      Remove a worktree
         \\  shellenv    Output shell function for auto-cd (source this)
         \\  status      Show status dashboard of all worktrees
+        \\  step        Run focused workflow steps
+        \\  switch      Switch to, create, or checkout a worktree
         \\  ui          Open an interactive worktree UI (requires gum)
         \\  version     Show version information
         \\

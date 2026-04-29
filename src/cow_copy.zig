@@ -162,6 +162,28 @@ pub fn copyDir(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) !
     try copyDirWithStrategy(allocator, src, dst, .native_clone);
 }
 
+/// Copy a filesystem path from src to dst using the best available mechanism.
+/// Regular files, directories, and symlinks are supported.
+pub fn copyPathWithStrategy(
+    allocator: std.mem.Allocator,
+    src: []const u8,
+    dst: []const u8,
+    strategy: CopyStrategy,
+) !void {
+    const stat = try std.posix.fstatat(std.fs.cwd().fd, src, std.posix.AT.SYMLINK_NOFOLLOW);
+    switch (stat.mode & std.posix.S.IFMT) {
+        std.posix.S.IFREG => try copyFileWithStrategy(allocator, src, dst, strategy),
+        std.posix.S.IFDIR => try copyDirWithStrategy(allocator, src, dst, strategy),
+        std.posix.S.IFLNK => try copySymlink(src, dst),
+        else => return error.UnsupportedPathType,
+    }
+}
+
+/// Copy a filesystem path using native_clone as the starting tier.
+pub fn copyPath(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) !void {
+    try copyPathWithStrategy(allocator, src, dst, .native_clone);
+}
+
 /// Walk the worktree directory tree, stat-ing every entry to warm the OS page/
 /// metadata cache. Best-effort: errors are silently ignored. Intended to run in
 /// a detached background thread after worktree creation.
@@ -200,7 +222,10 @@ fn tryFiclone(src: []const u8, dst: []const u8) bool {
     const dst_file = std.fs.createFileAbsolute(dst, .{ .truncate = true }) catch return false;
     const rc = std.os.linux.ioctl(dst_file.handle, FICLONE, @intCast(src_file.handle));
     dst_file.close();
-    if (rc == 0) return true;
+    if (rc == 0) {
+        preservePathMode(src, dst) catch {};
+        return true;
+    }
     // FICLONE failed (EOPNOTSUPP etc.): delete the empty dst so callers can retry.
     std.fs.deleteFileAbsolute(dst) catch {};
     return false;
@@ -249,6 +274,12 @@ fn copyDirRsync(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) 
     if (!ok) return error.RsyncFailed;
 }
 
+fn copySymlink(src: []const u8, dst: []const u8) !void {
+    var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const target = try std.posix.readlink(src, &link_buf);
+    try std.posix.symlink(target, dst);
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // File copy: copy_file_range → read+write (standard tier)
 // ──────────────────────────────────────────────────────────────────────────────
@@ -256,13 +287,13 @@ fn copyDirRsync(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) 
 fn copyFileKernel(src: []const u8, dst: []const u8) !void {
     const src_file = try std.fs.openFileAbsolute(src, .{});
     defer src_file.close();
+    const stat = try src_file.stat();
 
     const dst_file = try std.fs.createFileAbsolute(dst, .{ .truncate = true });
     defer dst_file.close();
 
     if (builtin.os.tag == .linux or builtin.os.tag == .freebsd) {
         // copy_file_range: kernel-side copy (may use CoW on supported fs).
-        const stat = try src_file.stat();
         const size = stat.size;
         if (size > 0) {
             var remaining = size;
@@ -283,18 +314,36 @@ fn copyFileKernel(src: []const u8, dst: []const u8) !void {
                 off_out += copied;
                 remaining -= @intCast(copied);
             }
-            if (remaining == 0) return;
+            if (remaining == 0) {
+                try preserveFileMode(dst_file, stat.mode);
+                return;
+            }
             // Partial copy: truncate and retry with read+write.
             try dst_file.setEndPos(0);
             try dst_file.seekTo(0);
             try src_file.seekTo(0);
         } else {
+            try preserveFileMode(dst_file, stat.mode);
             return; // empty file, dst already created
         }
     }
 
     // Fallback: userspace read+write.
     try copyFileReadWrite(src_file, dst_file);
+    try preserveFileMode(dst_file, stat.mode);
+}
+
+fn preserveFileMode(file: std.fs.File, mode: std.fs.File.Mode) !void {
+    if (std.fs.has_executable_bit) {
+        try file.chmod(mode & 0o7777);
+    }
+}
+
+fn preservePathMode(src: []const u8, dst: []const u8) !void {
+    if (std.fs.has_executable_bit) {
+        const stat = try std.fs.cwd().statFile(src);
+        try std.posix.fchmodat(std.fs.cwd().fd, dst, stat.mode & 0o7777, 0);
+    }
 }
 
 fn copyFileReadWrite(src_file: std.fs.File, dst_file: std.fs.File) !void {
@@ -311,6 +360,7 @@ fn copyFileReadWrite(src_file: std.fs.File, dst_file: std.fs.File) !void {
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn copyDirWalk(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) !void {
+    const src_stat = try std.fs.cwd().statFile(src);
     try std.fs.makeDirAbsolute(dst);
     var src_dir = try std.fs.openDirAbsolute(src, .{ .iterate = true });
     defer src_dir.close();
@@ -333,6 +383,11 @@ fn copyDirWalk(allocator: std.mem.Allocator, src: []const u8, dst: []const u8) !
             },
             else => {}, // skip devices, sockets, etc.
         }
+    }
+    if (std.fs.has_executable_bit) {
+        var dst_dir = try std.fs.openDirAbsolute(dst, .{ .iterate = true });
+        defer dst_dir.close();
+        try dst_dir.chmod(src_stat.mode & 0o7777);
     }
 }
 
@@ -427,6 +482,34 @@ test "copyDirWithStrategy standard copies directory tree" {
     const c1_contents = try std.fs.cwd().readFileAlloc(allocator, c1, 64);
     defer allocator.free(c1_contents);
     try std.testing.expectEqualStrings("file-a", c1_contents);
+}
+
+test "copyPathWithStrategy standard copies symlink" {
+    if (builtin.os.tag == .windows) return;
+
+    const allocator = std.testing.allocator;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+
+    const target = try std.fs.path.join(allocator, &.{ root, "target.txt" });
+    defer allocator.free(target);
+    const link = try std.fs.path.join(allocator, &.{ root, "link.txt" });
+    defer allocator.free(link);
+    const dst = try std.fs.path.join(allocator, &.{ root, "dst-link.txt" });
+    defer allocator.free(dst);
+
+    const file = try std.fs.createFileAbsolute(target, .{});
+    try file.writeAll("linked content");
+    file.close();
+
+    try std.posix.symlink(target, link);
+    try copyPathWithStrategy(allocator, link, dst, .standard);
+
+    var link_buf: [std.fs.max_path_bytes]u8 = undefined;
+    const copied_target = try std.posix.readlink(dst, &link_buf);
+    try std.testing.expectEqualStrings(target, copied_target);
 }
 
 test "copyFile copies content correctly" {

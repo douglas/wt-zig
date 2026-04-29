@@ -42,22 +42,33 @@ fn unixShellenv() []const u8 {
     \\    esac
     \\
     \\    # Use script(1) to provide a PTY for interactive commands.
-    \\    local log_file exit_code cd_path
+    \\    local log_file exit_code cd_path cd_file exec_file
     \\    log_file=$(mktemp -t wt.XXXXXX)
+    \\    cd_file=$(mktemp -t wt-cd.XXXXXX)
+    \\    exec_file=$(mktemp -t wt-exec.XXXXXX)
     \\
     \\    if [ "$(uname)" = "Darwin" ]; then
-    \\        script -q "$log_file" /bin/sh -c 'command wt "$@"' wt "$@"
+    \\        WT_DIRECTIVE_CD_FILE="$cd_file" WT_DIRECTIVE_EXEC_FILE="$exec_file" script -q "$log_file" /bin/sh -c 'command wt "$@"' wt "$@"
     \\    else
-    \\        script -q -c "command wt $*" "$log_file"
+    \\        WT_DIRECTIVE_CD_FILE="$cd_file" WT_DIRECTIVE_EXEC_FILE="$exec_file" script -q -c "command wt $*" "$log_file"
     \\    fi
     \\    exit_code=$?
-    \\    cd_path=$(grep '^wt navigating to: ' "$log_file" | tail -1 | sed 's/^wt navigating to: //')
-    \\    rm -f "$log_file"
+    \\    if [ -s "$cd_file" ]; then
+    \\        cd_path=$(cat "$cd_file")
+    \\    else
+    \\        cd_path=$(grep '^wt navigating to: ' "$log_file" | tail -1 | sed 's/^wt navigating to: //')
+    \\    fi
+    \\    rm -f "$log_file" "$cd_file"
     \\    cd_path=${cd_path%$'\r'}
     \\
     \\    if [ $exit_code -eq 0 ] && [ -n "$cd_path" ]; then
     \\        cd "$cd_path"
     \\    fi
+    \\    if [ $exit_code -eq 0 ] && [ -s "$exec_file" ]; then
+    \\        source "$exec_file"
+    \\        exit_code=$?
+    \\    fi
+    \\    rm -f "$exec_file"
     \\    return $exit_code
     \\}
     \\
@@ -68,7 +79,7 @@ fn unixShellenv() []const u8 {
     \\        COMPREPLY=()
     \\        cur="${COMP_WORDS[COMP_CWORD]}"
     \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
-    \\        commands="checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion"
+    \\        commands="switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion"
     \\
     \\        if [ $COMP_CWORD -eq 1 ]; then
     \\            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -76,17 +87,33 @@ fn unixShellenv() []const u8 {
     \\        fi
     \\
     \\        case "$prev" in
-    \\            checkout|co|create)
+    \\            switch|sw|cd|jump|j|checkout|co|create)
     \\                local branches remotes
     \\                remotes=$(git remote 2>/dev/null | paste -sd'|' -)
     \\                branches=$(git branch -a --format='%(refname:short)' 2>/dev/null | grep -v 'HEAD' | sed -E "s#^($remotes)/##" | sort -u)
-    \\                COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "$branches --create -c --base --execute -x" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            remove|rm)
     \\                local branches
     \\                branches=$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')
-    \\                COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "$branches --force -f --no-delete-branch --force-delete -D" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            done)
+    \\                COMPREPLY=( $(compgen -W "--force -f --no-delete-branch --force-delete -D" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            list|ls)
+    \\                COMPREPLY=( $(compgen -W "--full" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            step)
+    \\                COMPREPLY=( $(compgen -W "commit copy-ignored diff prune push rebase squash" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            merge)
+    \\                COMPREPLY=( $(compgen -W "--no-remove --no-ff --squash --rebase --push --no-hooks --message -m" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            config)
@@ -107,6 +134,11 @@ fn unixShellenv() []const u8 {
     \\    _wt_complete_zsh() {
     \\        local -a commands branches
     \\        commands=(
+    \\            'switch:Switch to, create, or checkout a worktree'
+    \\            'sw:Switch to, create, or checkout a worktree'
+    \\            'cd:Switch to, create, or checkout a worktree'
+    \\            'jump:Switch to, create, or checkout a worktree'
+    \\            'j:Switch to, create, or checkout a worktree'
     \\            'checkout:Checkout existing branch in new worktree'
     \\            'co:Checkout existing branch in new worktree'
     \\            'create:Create new branch in worktree'
@@ -119,7 +151,9 @@ fn unixShellenv() []const u8 {
     \\            'rm:Remove a worktree'
     \\            'done:Remove current linked worktree'
     \\            'status:Show status dashboard of all worktrees'
+    \\            'step:Run focused workflow steps'
     \\            'cleanup:Remove worktrees for merged branches'
+    \\            'merge:Merge current branch into a target branch'
     \\            'migrate:Migrate existing worktrees to configured paths'
     \\            'prune:Remove worktree administrative files'
     \\            'help:Show help'
@@ -129,9 +163,6 @@ fn unixShellenv() []const u8 {
     \\            'config:Manage wt configuration'
     \\            'examples:Show practical command examples'
     \\            'version:Show version information'
-    \\            'jump:Navigate to a worktree by branch name'
-    \\            'j:Navigate to a worktree by branch name'
-    \\            'cd:Navigate to a worktree by branch name'
     \\            'ui:Open an interactive worktree UI'
     \\            'completion:Generate completion script'
     \\        )
@@ -140,15 +171,36 @@ fn unixShellenv() []const u8 {
     \\            _describe 'command' commands
     \\        elif (( CURRENT == 3 )); then
     \\            case "$words[2]" in
-    \\                checkout|co|create)
+    \\                switch|sw|cd|jump|j|checkout|co|create)
     \\                    local remotes
     \\                    remotes=$(git remote 2>/dev/null | paste -sd'|' -)
     \\                    branches=(${(f)"$(git branch -a --format='%(refname:short)' 2>/dev/null | grep -v 'HEAD' | sed -E "s#^($remotes)/##" | sort -u)"})
+    \\                    branches+=('--create:Create a new branch' '-c:Create a new branch' '--base:Base branch' '--execute:Run command after switching' '-x:Run command after switching')
     \\                    _describe 'branch' branches
     \\                    ;;
     \\                remove|rm)
-    \\                    branches=(${(f)"$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')"})
+    \\                    branches=(${(f)"$(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\[\([^]]*\)\].*/\1/p')"} '--force:Force worktree removal' '-f:Force worktree removal' '--no-delete-branch:Keep the branch' '--force-delete:Delete branch even when unsafe' '-D:Delete branch even when unsafe')
     \\                    _describe 'branch' branches
+    \\                    ;;
+    \\                done)
+    \\                    local -a done_flags
+    \\                    done_flags=('--force:Force worktree removal' '-f:Force worktree removal' '--no-delete-branch:Keep the branch' '--force-delete:Delete branch even when unsafe' '-D:Delete branch even when unsafe')
+    \\                    _describe 'done flag' done_flags
+    \\                    ;;
+    \\                list|ls)
+    \\                    local -a list_flags
+    \\                    list_flags=('--full:Include current, dirty, and upstream status')
+    \\                    _describe 'list flag' list_flags
+    \\                    ;;
+    \\                step)
+    \\                    local -a step_cmds
+    \\                    step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                    _describe 'step command' step_cmds
+    \\                    ;;
+    \\                merge)
+    \\                    local -a merge_flags
+    \\                    merge_flags=('--no-remove:Keep source worktree after merge' '--no-ff:Create a merge commit' '--squash:Squash before merge' '--rebase:Rebase before merge' '--push:Push after merge' '--no-hooks:Skip merge pipeline hooks' '--message:Commit message for squash' '-m:Commit message for squash')
+    \\                    _describe 'merge flag' merge_flags
     \\                    ;;
     \\                config)
     \\                    local -a config_cmds
@@ -186,10 +238,6 @@ fn powershellShellenv() []const u8 {
     \\# NOTE: Requires wt.exe to be in PATH or current directory
     \\
     \\function wt {
-    \\    $output = & wt.exe @args
-    \\    $exitCode = $LASTEXITCODE
-    \\    Write-Output $output
-    \\
     \\    $isJson = $false
     \\    for ($i = 0; $i -lt $args.Count; $i++) {
     \\        if ($args[$i] -eq '--format' -and $i + 1 -lt $args.Count -and $args[$i + 1] -eq 'json') {
@@ -200,16 +248,41 @@ fn powershellShellenv() []const u8 {
     \\        }
     \\    }
     \\    if ($isJson) {
+    \\        & wt.exe @args
+    \\        $exitCode = $LASTEXITCODE
     \\        $global:LASTEXITCODE = $exitCode
     \\        return
     \\    }
     \\
+    \\    $cdFile = [System.IO.Path]::GetTempFileName()
+    \\    $execFile = [System.IO.Path]::GetTempFileName()
+    \\    try {
+    \\        $env:WT_DIRECTIVE_CD_FILE = $cdFile
+    \\        $env:WT_DIRECTIVE_EXEC_FILE = $execFile
+    \\        $output = & wt.exe @args
+    \\        $exitCode = $LASTEXITCODE
+    \\        Write-Output $output
+    \\    }
+    \\    finally {
+    \\        Remove-Item Env:\WT_DIRECTIVE_CD_FILE -ErrorAction SilentlyContinue
+    \\        Remove-Item Env:\WT_DIRECTIVE_EXEC_FILE -ErrorAction SilentlyContinue
+    \\    }
+    \\
     \\    if ($exitCode -eq 0) {
-    \\        $cdPath = $output | Select-String -Pattern "^wt navigating to: " | ForEach-Object { $_.Line.Substring(18) }
+    \\        if ((Test-Path $cdFile) -and (Get-Item $cdFile).Length -gt 0) {
+    \\            $cdPath = (Get-Content -Path $cdFile -Raw).Trim()
+    \\        } else {
+    \\            $cdPath = $output | Select-String -Pattern "^wt navigating to: " | ForEach-Object { $_.Line.Substring(18) }
+    \\        }
     \\        if ($cdPath) {
     \\            Set-Location -LiteralPath $cdPath
     \\        }
     \\    }
+    \\    if ($exitCode -eq 0 -and (Test-Path $execFile) -and (Get-Item $execFile).Length -gt 0) {
+    \\        Invoke-Expression (Get-Content -Path $execFile -Raw)
+    \\        $exitCode = $LASTEXITCODE
+    \\    }
+    \\    Remove-Item $cdFile, $execFile -ErrorAction SilentlyContinue
     \\    $global:LASTEXITCODE = $exitCode
     \\}
     \\
@@ -217,7 +290,7 @@ fn powershellShellenv() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'cleanup', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'jump', 'j', 'cd', 'ui', 'completion')
+    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
     \\
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
@@ -227,17 +300,33 @@ fn powershellShellenv() []const u8 {
     \\        }
     \\    } elseif ($position -eq 1) {
     \\        $subCommand = $commandAst.CommandElements[1].Value
-    \\        if ($subCommand -in @('checkout', 'co', 'create')) {
+    \\        if ($subCommand -in @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create')) {
     \\            $remotes = (git remote 2>$null) -join '|'
     \\            $branches = git branch -a --format='%(refname:short)' 2>$null | Where-Object { $_ -notmatch 'HEAD' } | ForEach-Object { $_ -replace "^($remotes)/", '' } | Sort-Object -Unique
-    \\            $branches | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            ($branches + @('--create', '-c', '--base', '--execute', '-x')) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -in @('remove', 'rm')) {
     \\            $branches = git worktree list 2>$null | Select-Object -Skip 1 | ForEach-Object {
     \\                if ($_ -match '\[([^\]]+)\]') { $matches[1] }
     \\            }
-    \\            $branches | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            ($branches + @('--force', '-f', '--no-delete-branch', '--force-delete', '-D')) | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'done') {
+    \\            @('--force', '-f', '--no-delete-branch', '--force-delete', '-D') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -in @('list', 'ls')) {
+    \\            @('--full') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'step') {
+    \\            @('commit', 'copy-ignored', 'diff', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'merge') {
+    \\            @('--no-remove', '--no-ff', '--squash', '--rebase', '--push', '--no-hooks', '--message', '-m') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
@@ -285,7 +374,7 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"checkout co create default pr mr list ls remove rm done status cleanup migrate prune help shellenv init info config examples version jump j cd ui completion\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion\"") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }

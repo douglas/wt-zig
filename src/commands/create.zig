@@ -11,6 +11,11 @@ const git_repo = @import("../git/repo.zig");
 const path_mod = @import("../path.zig");
 const worktree = @import("../git/worktree.zig");
 
+pub const Outcome = struct {
+    path: []const u8,
+    existed: bool,
+};
+
 pub fn run(
     ctx: output.Context,
     cfg: *const config.Resolved,
@@ -27,7 +32,53 @@ pub fn run(
     const base = if (args.len == 2) args[1] else try git_repo.getDefaultBase(allocator);
     defer if (args.len != 2) allocator.free(base);
 
-    var listed = worktree.list(allocator, stderr) catch return 1;
+    const outcome = createBranch(allocator, cfg, branch, base, stderr) catch |err| switch (err) {
+        error.HookCommandFailed => {
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt create", "pre-create hook failed");
+            } else {
+                try stderr.writeAll("pre-create hook failed\n");
+            }
+            return 1;
+        },
+        error.StartHookFailed => {
+            if (output.isJson(ctx)) {
+                try output.emitError(ctx, stdout, "wt create", "pre-start hook failed");
+            } else {
+                try stderr.writeAll("pre-start hook failed\n");
+            }
+            return 1;
+        },
+        error.GitCommandFailed => return 1,
+        else => return err,
+    };
+    defer allocator.free(outcome.path);
+
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt create", .{
+            .status = if (outcome.existed) "exists" else "created",
+            .branch = branch,
+            .base = base,
+            .path = outcome.path,
+            .navigate_to = outcome.path,
+        });
+    } else {
+        try stdout.writeAll(if (outcome.existed) "Worktree already exists: " else "Worktree created at: ");
+        try stdout.writeAll(outcome.path);
+        try stdout.writeByte('\n');
+        try output.emitNavigateTo(stdout, outcome.path);
+    }
+    return 0;
+}
+
+pub fn createBranch(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    branch: []const u8,
+    base: []const u8,
+    stderr: *std.Io.Writer,
+) !Outcome {
+    var listed = worktree.list(allocator, stderr) catch return error.GitCommandFailed;
     defer listed.deinit(allocator);
 
     var info = try git_repo.getRepoInfoWithWorktrees(allocator, listed.entries);
@@ -35,21 +86,10 @@ pub fn run(
     for (listed.entries) |entry| {
         if (entry.branch) |existing_branch| {
             if (std.mem.eql(u8, existing_branch, branch)) {
-                if (output.isJson(ctx)) {
-                    try output.emitSuccess(ctx, stdout, "wt create", .{
-                        .status = "exists",
-                        .branch = branch,
-                        .base = base,
-                        .path = entry.path,
-                        .navigate_to = entry.path,
-                    });
-                } else {
-                    try stdout.writeAll("Worktree already exists: ");
-                    try stdout.writeAll(entry.path);
-                    try stdout.writeByte('\n');
-                    try output.emitNavigateTo(stdout, entry.path);
-                }
-                return 0;
+                return .{
+                    .path = try allocator.dupe(u8, entry.path),
+                    .existed = true,
+                };
             }
         }
     }
@@ -58,24 +98,15 @@ pub fn run(
     defer env_map.deinit();
 
     const target_path = try path_mod.buildWorktreePath(allocator, cfg, info, branch, &env_map);
-    defer allocator.free(target_path);
+    errdefer allocator.free(target_path);
 
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
     defer hook_env.deinit();
 
-    hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr) catch |err| {
-        if (output.isJson(ctx)) {
-            output.emitError(ctx, stdout, "wt create", "pre-create hook failed") catch {};
-        } else {
-            stderr.writeAll("pre-create hook failed: ") catch {};
-            stderr.writeAll(@errorName(err)) catch {};
-            stderr.writeByte('\n') catch {};
-        }
-        return 1;
-    };
+    try hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr);
 
     const success = try runGitCreate(allocator, target_path, branch, base, stderr);
-    if (!success) return 1;
+    if (!success) return error.GitCommandFailed;
 
     copy_files.copyFiles(allocator, cfg, info.name, info.main, target_path, stderr);
 
@@ -87,21 +118,15 @@ pub fn run(
 
     hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 
-    if (output.isJson(ctx)) {
-        try output.emitSuccess(ctx, stdout, "wt create", .{
-            .status = "created",
-            .branch = branch,
-            .base = base,
-            .path = target_path,
-            .navigate_to = target_path,
-        });
-    } else {
-        try stdout.writeAll("Worktree created at: ");
-        try stdout.writeAll(target_path);
-        try stdout.writeByte('\n');
-        try output.emitNavigateTo(stdout, target_path);
-    }
-    return 0;
+    hooks.runStartHooks(allocator, cfg, info, branch, target_path, stderr) catch |err| switch (err) {
+        error.HookCommandFailed => return error.StartHookFailed,
+        else => return err,
+    };
+
+    return .{
+        .path = target_path,
+        .existed = false,
+    };
 }
 
 fn runGitCreate(
