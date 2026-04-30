@@ -15,6 +15,8 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `remove` / `rm`
 - `done`
 - `ui`
+- `step eval`
+- `step for-each`
 - `prune`
 - `cleanup`
 - `migrate`
@@ -24,7 +26,9 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `info`
 - `shellenv`
 - `init`
+- `hook`
 - configured `[aliases]`
+- `config alias` discoverability
 
 ## Port Complete
 
@@ -291,6 +295,16 @@ Commit: `2ee74d4`
 - Kept merge defaults compatible while exposing the optional pipeline flags in help, examples, and completions.
 - Updated docs, examples, shell completions, and local assistant skills for alias, copy-ignored exclude, step primitive, merge pipeline, and prune-wrapper discoverability.
 
+### Phase 27: hook and alias discoverability polish
+
+- Added `hook` to shell completion catalogs and documented `wt hook show` for inspecting configured hooks.
+- Added `config alias` to shell completion catalogs and documented `wt config alias show` / `wt config alias dry-run` for alias inspection and previewing commands.
+
+### Phase 28: step template discoverability polish
+
+- Added `step eval` and `step for-each` to shell completion catalogs.
+- Documented `wt step eval [--dry-run] <template>` and `wt step for-each -- <command> [args...]`, including template variables in `for-each` command args.
+
 ## Verification Patterns
 
 The port has been verified repeatedly with both unit/build checks and temp-repo smoke tests.
@@ -302,6 +316,7 @@ zig fmt --check build.zig build.zig.zon src/*.zig src/commands/*.zig src/git/*.z
 zig build
 zig build test
 zig build check
+zig build smoke
 zig build parity
 zig build release          # stripped ReleaseSmall binary (~271 KB)
 ```

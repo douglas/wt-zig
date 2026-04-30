@@ -34,6 +34,7 @@ test {
     std.testing.refAllDecls(@import("hooks.zig"));
     std.testing.refAllDecls(@import("output.zig"));
     std.testing.refAllDecls(@import("path.zig"));
+    std.testing.refAllDecls(@import("template.zig"));
     std.testing.refAllDecls(@import("process.zig"));
     std.testing.refAllDecls(@import("prompt.zig"));
     std.testing.refAllDecls(@import("commands/config.zig"));
@@ -42,6 +43,7 @@ test {
     std.testing.refAllDecls(@import("commands/create.zig"));
     std.testing.refAllDecls(@import("commands/default.zig"));
     std.testing.refAllDecls(@import("commands/done.zig"));
+    std.testing.refAllDecls(@import("commands/hook.zig"));
     std.testing.refAllDecls(@import("commands/info.zig"));
     std.testing.refAllDecls(@import("commands/init.zig"));
     std.testing.refAllDecls(@import("commands/init_support.zig"));

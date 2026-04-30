@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Release workflow now uses the canonical `zig build release` step for tagged artifacts
+- CI and release test gates now run fixture-based workflow smoke checks with `zig build smoke`
+- Command catalogs and docs now surface `hook` plus `config alias` discoverability, including `wt config alias show`, `wt config alias dry-run`, and `wt hook show`
+- Command catalogs and docs now surface `wt step eval [--dry-run] <template>` and `wt step for-each -- <command> [args...]`, including template-variable use in `for-each` args
+
 ## 0.4.8 — 2026-04-26
 
 ### Added

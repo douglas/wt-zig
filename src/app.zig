@@ -12,6 +12,7 @@ const checkout_cmd = @import("commands/checkout.zig");
 const create_cmd = @import("commands/create.zig");
 const examples_cmd = @import("commands/examples.zig");
 const help_cmd = @import("commands/help.zig");
+const hook_cmd = @import("commands/hook.zig");
 const info_cmd = @import("commands/info.zig");
 const init_cmd = @import("commands/init.zig");
 const list_cmd = @import("commands/list.zig");
@@ -89,6 +90,7 @@ pub fn run(
         .status => status_cmd.run(ctx, args[1..], stdout, stderr),
         .default => default_cmd.run(ctx, args[1..], stdout, stderr),
         .config => config_cmd.run(ctx, args[1..], &loaded_config.resolved, stdout, stderr),
+        .hook => hook_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .completion => completion_cmd.run(ctx, args[1..], stdout, stderr),
         .checkout => checkout_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),
         .create => create_cmd.run(ctx, &loaded_config.resolved, args[1..], stdout, stderr),

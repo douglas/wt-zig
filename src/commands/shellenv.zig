@@ -79,7 +79,7 @@ fn unixShellenv() []const u8 {
     \\        COMPREPLY=()
     \\        cur="${COMP_WORDS[COMP_CWORD]}"
     \\        prev="${COMP_WORDS[COMP_CWORD-1]}"
-    \\        commands="switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion"
+    \\        commands="switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion"
     \\
     \\        if [ $COMP_CWORD -eq 1 ]; then
     \\            COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
@@ -109,7 +109,7 @@ fn unixShellenv() []const u8 {
     \\                return 0
     \\                ;;
     \\            step)
-    \\                COMPREPLY=( $(compgen -W "commit copy-ignored diff prune push rebase squash" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each prune push rebase squash" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            merge)
@@ -117,7 +117,11 @@ fn unixShellenv() []const u8 {
     \\                return 0
     \\                ;;
     \\            config)
-    \\                COMPREPLY=( $(compgen -W "init show path" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "init show path alias" -- "$cur") )
+    \\                return 0
+    \\                ;;
+    \\            hook)
+    \\                COMPREPLY=( $(compgen -W "show" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            ui)
@@ -157,6 +161,7 @@ fn unixShellenv() []const u8 {
     \\            'migrate:Migrate existing worktrees to configured paths'
     \\            'prune:Remove worktree administrative files'
     \\            'help:Show help'
+    \\            'hook:Inspect configured hook commands'
     \\            'shellenv:Output shell function for auto-cd'
     \\            'init:Initialize shell integration'
     \\            'info:Show worktree location configuration'
@@ -194,7 +199,7 @@ fn unixShellenv() []const u8 {
     \\                    ;;
     \\                step)
     \\                    local -a step_cmds
-    \\                    step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                    step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
     \\                    _describe 'step command' step_cmds
     \\                    ;;
     \\                merge)
@@ -208,8 +213,14 @@ fn unixShellenv() []const u8 {
     \\                        'init:Create a default configuration file'
     \\                        'show:Show effective configuration with sources'
     \\                        'path:Print the config file path'
+    \\                        'alias:Inspect configured aliases'
     \\                    )
     \\                    _describe 'config command' config_cmds
+    \\                    ;;
+    \\                hook)
+    \\                    local -a hook_cmds
+    \\                    hook_cmds=('show:Inspect configured hook commands')
+    \\                    _describe 'hook command' hook_cmds
     \\                    ;;
     \\                ui)
     \\                    local -a ui_cmds
@@ -290,7 +301,7 @@ fn powershellShellenv() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
+    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'hook', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
     \\
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
@@ -322,7 +333,7 @@ fn powershellShellenv() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'step') {
-    \\            @('commit', 'copy-ignored', 'diff', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'merge') {
@@ -330,7 +341,11 @@ fn powershellShellenv() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
-    \\            @('init', 'show', 'path') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('init', 'show', 'path', 'alias') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'hook') {
+    \\            @('show') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'ui') {
@@ -370,11 +385,14 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Register-ArgumentCompleter") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Set-Location -LiteralPath $cdPath") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "@('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash')") != null);
     } else {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each prune push rebase squash") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion\"") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
 }

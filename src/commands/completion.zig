@@ -1,7 +1,7 @@
 const std = @import("std");
 const output = @import("../output.zig");
 
-const command_words = "switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion";
+const command_words = "switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion";
 
 pub fn run(ctx: output.Context, args: []const []const u8, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
@@ -102,7 +102,7 @@ fn bashScript() []const u8 {
     \\            return 0
     \\            ;;
     \\        step)
-    \\            COMPREPLY=( $(compgen -W "commit copy-ignored diff prune push rebase squash" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each prune push rebase squash" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        merge)
@@ -110,7 +110,11 @@ fn bashScript() []const u8 {
     \\            return 0
     \\            ;;
     \\        config)
-    \\            COMPREPLY=( $(compgen -W "init show path" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "init show path alias" -- "$cur") )
+    \\            return 0
+    \\            ;;
+    \\        hook)
+    \\            COMPREPLY=( $(compgen -W "show" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        ui)
@@ -127,10 +131,11 @@ fn bashScript() []const u8 {
 fn fishScript() []const u8 {
     return 
     \\# fish completion for wt
-    \\set -l wt_commands switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help shellenv init info config examples version ui completion
+    \\set -l wt_commands switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion
     \\
     \\complete -c wt -n "__fish_use_subcommand" -a "$wt_commands"
-    \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path"
+    \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path alias"
+    \\complete -c wt -n "__fish_seen_subcommand_from hook" -a "show"
     \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j checkout co create" -a "(git branch -a --format='%(refname:short)' 2>/dev/null | sed 's#^.*/##' | sort -u)"
     \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j" -a "--create -c --base --execute -x"
     \\complete -c wt -n "__fish_seen_subcommand_from remove rm" -a "(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\\[\\([^]]*\\)\\].*/\\1/p')"
@@ -148,7 +153,7 @@ fn powershellScript() []const u8 {
     \\Register-ArgumentCompleter -CommandName wt -ScriptBlock {
     \\    param($commandName, $wordToComplete, $commandAst, $fakeBoundParameters)
     \\
-    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
+    \\    $commands = @('switch', 'sw', 'cd', 'jump', 'j', 'checkout', 'co', 'create', 'default', 'pr', 'mr', 'list', 'ls', 'remove', 'rm', 'done', 'status', 'step', 'cleanup', 'merge', 'migrate', 'prune', 'help', 'hook', 'shellenv', 'init', 'info', 'config', 'examples', 'version', 'ui', 'completion')
     \\    $position = $commandAst.CommandElements.Count - 1
     \\
     \\    if ($position -eq 0) {
@@ -179,7 +184,7 @@ fn powershellScript() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'step') {
-    \\            @('commit', 'copy-ignored', 'diff', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'merge') {
@@ -187,7 +192,11 @@ fn powershellScript() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
-    \\            @('init', 'show', 'path') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('init', 'show', 'path', 'alias') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    \\            }
+    \\        } elseif ($subCommand -eq 'hook') {
+    \\            @('show') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'ui') {
@@ -230,6 +239,7 @@ fn zshScript() []const u8 {
     \\        'migrate:Migrate existing worktrees to configured paths'
     \\        'prune:Remove worktree administrative files'
     \\        'help:Show help'
+    \\        'hook:Inspect configured hook commands'
     \\        'shellenv:Output shell function for auto-cd'
     \\        'init:Initialize shell integration'
     \\        'info:Show worktree location configuration'
@@ -267,7 +277,7 @@ fn zshScript() []const u8 {
     \\                ;;
     \\            step)
     \\                local -a step_cmds
-    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
     \\                _describe 'step command' step_cmds
     \\                ;;
     \\            merge)
@@ -277,8 +287,13 @@ fn zshScript() []const u8 {
     \\                ;;
     \\            config)
     \\                local -a config_cmds
-    \\                config_cmds=('init:Create a default configuration file' 'show:Show effective configuration with sources' 'path:Print the config file path')
+    \\                config_cmds=('init:Create a default configuration file' 'show:Show effective configuration with sources' 'path:Print the config file path' 'alias:Inspect configured aliases')
     \\                _describe 'config command' config_cmds
+    \\                ;;
+    \\            hook)
+    \\                local -a hook_cmds
+    \\                hook_cmds=('show:Inspect configured hook commands')
+    \\                _describe 'hook command' hook_cmds
     \\                ;;
     \\            ui)
     \\                local -a ui_cmds
@@ -350,6 +365,9 @@ test "completion bash script contains completer" {
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "ui)") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "jump remove --force -f") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each prune push rebase squash") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias") != null);
 }
 
 test "completion reports unknown shell in text mode" {

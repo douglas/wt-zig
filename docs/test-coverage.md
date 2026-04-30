@@ -16,8 +16,8 @@ Legend:
 | Git parsing helpers (`git/*.zig`) | Medium | Parsing and repo helper behavior are tested; command-level git-failure mappings are mostly validated via parity harness. |
 | Hook behavior (`hooks.zig`) | High | Hook env construction and pre/post/start failure handling are covered. |
 | Command argument parsing (`commands/*`) | Medium | Most commands cover parse helpers; some run-path validation branches remain untested. |
-| Completion command (`commands/completion.zig`) | Medium | Help and bash output covered; unknown-shell behavior (text/json) now covered. |
-| Shellenv command (`commands/shellenv.zig`) | Medium | Generated shell blocks covered; JSON response path now covered. |
+| Completion command (`commands/completion.zig`) | Medium | Help and bash output covered; unknown-shell behavior (text/json) now covered; command catalogs now expose `hook`, `config alias`, and step template discoverability. |
+| Shellenv command (`commands/shellenv.zig`) | Medium | Generated shell blocks covered; JSON response path now covered; shell catalogs mirror `hook`, `config alias`, and step template discoverability. |
 | Interactive command runtime flows (`switch/checkout/remove/pr/mr/ui`) | Medium | Many helpers are covered; interactive/runtime command behavior still leans on parity/e2e. |
 
 ## Newly Added In This Pass
@@ -32,6 +32,8 @@ Legend:
 8. Configured alias parsing/merging and shell-quoted final-argument appending.
 9. `wt step commit`, `squash`, `rebase`, `push`, and `prune` parsing or wrapper coverage.
 10. Merge pipeline flag parsing for opt-in `--squash`, `--rebase`, `--push`, `--no-hooks`, and `--message`.
+11. Fixture-based CLI smoke coverage for configured aliases, `wt step commit`, `wt step squash`, and `wt merge --rebase --no-remove`.
+12. Completion/shellenv command-catalog checks for `hook`, `config alias`, and `step eval` / `step for-each` discoverability.
 
 ## Next 5 High-Value Tests
 
@@ -39,4 +41,4 @@ Legend:
 2. `wt completion` multi-arg usage error in text and JSON modes.
 3. `wt ui` JSON-mode rejection path (`wt ui is interactive; run without --format json`).
 4. `wt switch` command-level shortcut and no-match behavior (text + JSON) with a temporary git worktree fixture.
-5. End-to-end smoke tests for configured aliases and opt-in merge pipeline flows in a temporary git worktree fixture.
+5. Smoke coverage for `wt switch` shortcut navigation and `wt done` removal in temporary git worktree fixtures.

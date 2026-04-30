@@ -1,6 +1,6 @@
 ---
 name: wt
-description: "Use this skill when the user asks about `wt`, git worktrees, configured wt aliases, or commands like `wt switch` (`wt sw`, `wt cd`, `wt jump`), `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt step diff`, `wt step copy-ignored`, `wt step commit`, `wt step squash`, `wt step rebase`, `wt step push`, `wt step prune`, `wt merge`, `wt ui`, `wt pr`, `wt mr`, `wt status`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
+description: "Use this skill when the user asks about `wt`, git worktrees, configured wt aliases, or commands like `wt switch` (`wt sw`, `wt cd`, `wt jump`), `wt create`, `wt checkout` (`wt co`), `wt list` (`wt ls`), `wt remove` (`wt rm`), `wt done`, `wt step diff`, `wt step copy-ignored`, `wt step commit`, `wt step squash`, `wt step rebase`, `wt step push`, `wt step eval`, `wt step for-each`, `wt step prune`, `wt merge`, `wt ui`, `wt pr`, `wt mr`, `wt status`, `wt config alias show|dry-run`, `wt hook show`, `wt config`, `wt init`, `wt completion`, or `wt shellenv`."
 ---
 
 # wt-zig Skill for Codex
@@ -34,6 +34,8 @@ description: "Use this skill when the user asks about `wt`, git worktrees, confi
 - `wt step squash [target] --message <message> [--stage all|tracked|none]`
 - `wt step rebase [target]`
 - `wt step push [target]`
+- `wt step eval [--dry-run] <template>`
+- `wt step for-each -- <command> [args...]`
 - `wt step prune`
 - `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]`
 - `wt pr [number|url]`
@@ -41,6 +43,8 @@ description: "Use this skill when the user asks about `wt`, git worktrees, confi
 - `wt status`
 - `wt info`
 - `wt config show|path|init`
+- `wt config alias show|dry-run`
+- `wt hook show`
 - `wt cleanup --stale`
 - `wt prune`
 - `wt init`
@@ -63,6 +67,8 @@ wt --format json version
 - Per-repo override: `.wt.toml` in repo root
 - Hook blocks support pre/post create/checkout/start/remove/pr/mr with `WT_*` env variables.
 - `[aliases]` entries define custom wt commands; repo aliases override global aliases, and extra CLI args are appended to the last command.
+- `wt config alias show` surfaces the alias catalog, `wt config alias dry-run <name> [-- <args>...]` previews alias commands, and `wt hook show` displays configured hooks.
+- `wt step eval [--dry-run] <template>` uses the same `{.branch}`-style template variables as worktree paths, and `wt step for-each -- <command> [args...]` can embed those variables in forwarded command args.
 - `[step.copy-ignored] exclude = [...]` skips ignored copy candidates with gitignore-like patterns; use `!pattern` entries for exceptions.
 - `wt merge` defaults stay compatible: merge into the default base and clean up the source worktree. Pipeline steps are opt-in through flags like `--rebase`, `--squash`, and `--push`.
 

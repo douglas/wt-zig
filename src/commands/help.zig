@@ -70,6 +70,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\  done        Remove current linked worktree
         \\  examples    Show detailed command examples and outcomes
         \\  help        Help about any command
+        \\  hook        Show configured hooks
         \\  info        Show worktree location configuration
         \\  init        Initialize shell integration
         \\  list        List all worktrees

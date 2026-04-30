@@ -24,7 +24,10 @@ jobs:
           version: 0.15.2
 
       - name: Run tests
-        run: zig build test
+        run: zig build check
+
+      - name: Smoke
+        run: zig build smoke
 
   build:
     needs: test
@@ -59,12 +62,7 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           TARGET: ${{ matrix.target }}
-        run: |
-          zig build \
-            -Doptimize=ReleaseSmall \
-            "-Dversion=$VERSION" \
-            "-Dtarget=$TARGET" \
-            --prefix zig-out
+        run: zig build release "-Dversion=$VERSION" "-Dtarget=$TARGET" --prefix zig-out
 
       - name: Package
         env:

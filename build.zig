@@ -49,6 +49,17 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(b.getInstallStep());
     check_step.dependOn(&run_unit_tests.step);
 
+    const smoke_cmd = b.addSystemCommand(&.{
+        "/usr/bin/env",
+        b.fmt("WT_ZIG_BIN={s}", .{b.pathFromRoot("zig-out/bin/wt")}),
+        b.fmt("WT_ZIG_REPO={s}", .{b.pathFromRoot(".")}),
+        "bash",
+        b.pathFromRoot("scripts/smoke-workflows.sh"),
+    });
+    smoke_cmd.step.dependOn(b.getInstallStep());
+    const smoke_step = b.step("smoke", "Run smoke workflow checks");
+    smoke_step.dependOn(&smoke_cmd.step);
+
     const release_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,

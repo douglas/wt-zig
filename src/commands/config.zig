@@ -1,12 +1,18 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
+const prompt = @import("../prompt.zig");
 const path = @import("../path.zig");
 
 pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Resolved, stdout: *std.Io.Writer, stderr: *std.Io.Writer) !u8 {
     if (args.len == 0) {
         try printHelp(stdout);
         return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "alias")) {
+        return runAlias(ctx, args[1..], cfg, stdout, stderr);
     }
 
     if (std.mem.eql(u8, args[0], "show")) {
@@ -75,6 +81,124 @@ pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Res
     return 1;
 }
 
+fn runAlias(
+    ctx: output.Context,
+    args: []const []const u8,
+    cfg: *const config.Resolved,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try printAliasHelp(stdout);
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "show")) {
+        return runAliasShow(ctx, args[1..], cfg, stdout, stderr);
+    }
+
+    if (std.mem.eql(u8, args[0], "dry-run")) {
+        return runAliasDryRun(ctx, args[1..], cfg, stdout, stderr);
+    }
+
+    if (output.isJson(ctx)) {
+        const message = try std.fmt.allocPrint(ctx.allocator, "Unknown config alias command: {s}", .{args[0]});
+        defer ctx.allocator.free(message);
+        try output.emitError(ctx, stdout, "wt config alias", message);
+    } else {
+        try stderr.print("Unknown config alias command: {s}\n\n", .{args[0]});
+        try printAliasHelp(stderr);
+    }
+    return 1;
+}
+
+fn runAliasShow(
+    ctx: output.Context,
+    args: []const []const u8,
+    cfg: *const config.Resolved,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len > 1) {
+        return output.usageError(ctx, stdout, stderr, "wt config alias show", "Usage: wt config alias show [name]");
+    }
+
+    if (args.len == 1) {
+        const alias = findAlias(cfg, args[0]) orelse {
+            return unknownAlias(ctx, stdout, stderr, "wt config alias show", args[0]);
+        };
+
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config alias show", .{
+                .alias = .{
+                    .name = alias.name,
+                    .commands = alias.commands,
+                },
+            });
+        } else {
+            try printAlias(alias, stdout, ctx.allocator);
+        }
+        return 0;
+    }
+
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt config alias show", .{
+            .aliases = cfg.aliases,
+        });
+    } else {
+        try printAliases(cfg.aliases, stdout, ctx.allocator);
+    }
+    return 0;
+}
+
+fn runAliasDryRun(
+    ctx: output.Context,
+    args: []const []const u8,
+    cfg: *const config.Resolved,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const parsed = parseAliasDryRunArgs(args) catch {
+        return output.usageError(
+            ctx,
+            stdout,
+            stderr,
+            "wt config alias dry-run",
+            "Usage: wt config alias dry-run <name> [-- <args>...]",
+        );
+    };
+
+    const alias = findAlias(cfg, parsed.name) orelse {
+        return unknownAlias(ctx, stdout, stderr, "wt config alias dry-run", parsed.name);
+    };
+
+    if (alias.commands.len == 0) {
+        if (output.isJson(ctx)) {
+            const message = try std.fmt.allocPrint(ctx.allocator, "alias \"{s}\" has no commands", .{alias.name});
+            defer ctx.allocator.free(message);
+            try output.emitError(ctx, stdout, "wt config alias dry-run", message);
+        } else {
+            try stderr.print("alias \"{s}\" has no commands\n", .{alias.name});
+        }
+        return 1;
+    }
+
+    const preview_commands = try buildDryRunCommands(ctx.allocator, alias.commands, parsed.extra_args);
+    defer freeCommandList(ctx.allocator, preview_commands);
+
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt config alias dry-run", .{
+            .alias = .{
+                .name = alias.name,
+                .commands = preview_commands,
+            },
+        });
+    } else {
+        try printCommands(preview_commands, stdout, ctx.allocator);
+    }
+    return 0;
+}
+
 pub fn printHelp(writer: *std.Io.Writer) !void {
     try writer.writeAll(
         \\Manage wt configuration.
@@ -83,6 +207,10 @@ pub fn printHelp(writer: *std.Io.Writer) !void {
         \\  wt config <command>
         \\
         \\Commands:
+        \\  alias dry-run <name> [-- <args>...]
+        \\      Show the exact shell commands that would run for an alias without executing them
+        \\  alias show [name]
+        \\      Print configured aliases or a single alias
         \\  init
         \\      Create a starter config file at the resolved config path
         \\  show
@@ -95,6 +223,22 @@ pub fn printHelp(writer: *std.Io.Writer) !void {
         \\      Custom shell commands. Extra CLI args are appended to the final alias command.
         \\  [step.copy-ignored]
         \\      exclude = ["cache/", "*.sqlite", "!cache/keep.sqlite"]
+        \\
+    );
+}
+
+fn printAliasHelp(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        \\Manage configured aliases.
+        \\
+        \\Usage:
+        \\  wt config alias <command>
+        \\
+        \\Commands:
+        \\  dry-run <name> [-- <args>...]
+        \\      Show the shell commands that would run without executing them
+        \\  show [name]
+        \\      Print all configured aliases or a single alias
         \\
     );
 }
@@ -171,6 +315,122 @@ fn printShowJson(ctx: output.Context, cfg: *const config.Resolved, stdout: *std.
             .aliases = cfg.aliases,
         },
     });
+}
+
+fn printAliases(aliases: []const config.Alias, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+    if (aliases.len == 0) {
+        try writer.writeAll("Aliases:  (none configured)\n\n");
+        return;
+    }
+
+    try writer.writeAll("Aliases:\n");
+    for (aliases) |alias| {
+        try printAlias(alias, writer, allocator);
+    }
+    try writer.writeByte('\n');
+}
+
+fn printAlias(alias: config.Alias, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+    try writer.print("  {s}: ", .{alias.name});
+    if (alias.commands.len == 0) {
+        try writer.writeAll("(no commands)\n");
+        return;
+    }
+
+    for (alias.commands, 0..) |command, index| {
+        if (index != 0) try writer.writeAll(" && ");
+        const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
+        defer if (safe.ptr != command.ptr) allocator.free(safe);
+        try writer.print("{s}", .{safe});
+    }
+    try writer.writeByte('\n');
+}
+
+fn printCommands(commands: []const []const u8, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+    for (commands) |command| {
+        const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
+        defer if (safe.ptr != command.ptr) allocator.free(safe);
+        try writer.print("{s}\n", .{safe});
+    }
+}
+
+fn findAlias(cfg: *const config.Resolved, name: []const u8) ?config.Alias {
+    for (cfg.aliases) |alias| {
+        if (std.mem.eql(u8, alias.name, name)) return alias;
+    }
+    return null;
+}
+
+fn unknownAlias(
+    ctx: output.Context,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+    command_name: []const u8,
+    alias_name: []const u8,
+) !u8 {
+    if (output.isJson(ctx)) {
+        const message = try std.fmt.allocPrint(ctx.allocator, "Unknown alias: {s}", .{alias_name});
+        defer ctx.allocator.free(message);
+        try output.emitError(ctx, stdout, command_name, message);
+    } else {
+        try stderr.print("Unknown alias: {s}\n", .{alias_name});
+    }
+    return 1;
+}
+
+const AliasDryRunArgs = struct {
+    name: []const u8,
+    extra_args: []const []const u8,
+};
+
+fn parseAliasDryRunArgs(args: []const []const u8) !AliasDryRunArgs {
+    if (args.len == 0) return error.InvalidArguments;
+    if (args.len == 1) {
+        return .{ .name = args[0], .extra_args = &.{} };
+    }
+    if (!std.mem.eql(u8, args[1], "--")) return error.InvalidArguments;
+    return .{ .name = args[0], .extra_args = args[2..] };
+}
+
+fn buildDryRunCommands(
+    allocator: std.mem.Allocator,
+    commands: []const []const u8,
+    extra_args: []const []const u8,
+) ![]const []const u8 {
+    var preview_commands = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (preview_commands.items) |command| allocator.free(command);
+        preview_commands.deinit(allocator);
+    }
+
+    for (commands, 0..) |command, index| {
+        const preview = if (index == commands.len - 1)
+            try hooks.appendArgs(allocator, command, extra_args)
+        else
+            try allocator.dupe(u8, command);
+        preview_commands.append(allocator, preview) catch |err| {
+            allocator.free(preview);
+            return err;
+        };
+    }
+
+    return preview_commands.toOwnedSlice(allocator);
+}
+
+fn freeCommandList(allocator: std.mem.Allocator, commands: []const []const u8) void {
+    for (commands) |command| allocator.free(command);
+    allocator.free(commands);
+}
+
+test "parseAliasDryRunArgs requires name and separator" {
+    const parsed = try parseAliasDryRunArgs(&.{ "ship", "--", "arg one", "arg two" });
+    try std.testing.expectEqualStrings("ship", parsed.name);
+    try std.testing.expectEqual(2, parsed.extra_args.len);
+
+    const no_args = try parseAliasDryRunArgs(&.{"ship"});
+    try std.testing.expectEqual(0, no_args.extra_args.len);
+    try std.testing.expectError(error.InvalidArguments, parseAliasDryRunArgs(&.{ "--", "oops" }));
+    try std.testing.expectError(error.InvalidArguments, parseAliasDryRunArgs(&.{ "ship", "arg" }));
 }
 
 fn parseInitForce(args: []const []const u8) !bool {

@@ -24,7 +24,7 @@ pub fn run(
 
     for (commands, 0..) |command, index| {
         const command_to_run = if (index == commands.len - 1)
-            try appendArgs(allocator, command, args)
+            try hooks.appendArgs(allocator, command, args)
         else
             try allocator.dupe(u8, command);
         defer allocator.free(command_to_run);
@@ -42,27 +42,6 @@ pub fn run(
     return 0;
 }
 
-fn appendArgs(
-    allocator: std.mem.Allocator,
-    command: []const u8,
-    args: []const []const u8,
-) ![]const u8 {
-    if (args.len == 0) return allocator.dupe(u8, command);
-
-    var out = std.ArrayList(u8).empty;
-    errdefer out.deinit(allocator);
-
-    try out.appendSlice(allocator, command);
-    for (args) |arg| {
-        const quoted = try hooks.quoteShellArg(allocator, arg);
-        defer allocator.free(quoted);
-        try out.append(allocator, ' ');
-        try out.appendSlice(allocator, quoted);
-    }
-
-    return out.toOwnedSlice(allocator);
-}
-
 test "find returns configured alias commands" {
     var cfg = config.testing_defaults;
     cfg.aliases = &.{.{
@@ -74,16 +53,4 @@ test "find returns configured alias commands" {
     try std.testing.expectEqual(1, commands.len);
     try std.testing.expectEqualStrings("git branch --sort=-committerdate", commands[0]);
     try std.testing.expect(find(&cfg, "missing") == null);
-}
-
-test "appendArgs shell-quotes args on final command" {
-    const allocator = std.testing.allocator;
-    const command = try appendArgs(allocator, "printf %s", &.{ "hello world", "it's fine" });
-    defer allocator.free(command);
-
-    if (@import("builtin").os.tag == .windows) {
-        try std.testing.expectEqualStrings("printf %s \"hello world\" \"it's fine\"", command);
-    } else {
-        try std.testing.expectEqualStrings("printf %s 'hello world' 'it'\\''s fine'", command);
-    }
 }

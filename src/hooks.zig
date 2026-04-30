@@ -13,6 +13,27 @@ pub fn getHooks(cfg: *const config.Resolved, hook_name: []const u8) []const []co
     return &.{};
 }
 
+pub fn appendArgs(
+    allocator: std.mem.Allocator,
+    command: []const u8,
+    args: []const []const u8,
+) ![]const u8 {
+    if (args.len == 0) return allocator.dupe(u8, command);
+
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+
+    try out.appendSlice(allocator, command);
+    for (args) |arg| {
+        const quoted = try quoteShellArg(allocator, arg);
+        defer allocator.free(quoted);
+        try out.append(allocator, ' ');
+        try out.appendSlice(allocator, quoted);
+    }
+
+    return out.toOwnedSlice(allocator);
+}
+
 pub fn runStartHooks(
     allocator: std.mem.Allocator,
     cfg: *const config.Resolved,
@@ -354,4 +375,16 @@ test "runHooks aborts pre hooks and tolerates post hooks" {
     );
 
     try runHooks(allocator, "post_start", &.{"false"}, &hook_env, &discard);
+}
+
+test "appendArgs shell-quotes args on final command" {
+    const allocator = std.testing.allocator;
+    const command = try appendArgs(allocator, "printf %s", &.{ "hello world", "it's fine" });
+    defer allocator.free(command);
+
+    if (@import("builtin").os.tag == .windows) {
+        try std.testing.expectEqualStrings("printf %s \"hello world\" \"it's fine\"", command);
+    } else {
+        try std.testing.expectEqualStrings("printf %s 'hello world' 'it'\\''s fine'", command);
+    }
 }

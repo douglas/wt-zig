@@ -8,6 +8,7 @@ const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
 const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
+const template = @import("../template.zig");
 const cleanup_cmd = @import("cleanup.zig");
 const worktree = @import("../git/worktree.zig");
 
@@ -21,6 +22,15 @@ const ParsedCopyIgnoredArgs = struct {
     to: ?[]const u8 = null,
     dry_run: bool = false,
     force: bool = false,
+};
+
+const ParsedEvalArgs = struct {
+    template: []const u8,
+    dry_run: bool = false,
+};
+
+const ParsedForEachArgs = struct {
+    argv: []const []const u8,
 };
 
 const StageMode = enum {
@@ -125,6 +135,32 @@ pub fn run(
     if (args.len == 0 or isHelpFlag(args[0])) {
         try printHelp(ctx, stdout);
         return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "eval")) {
+        if (args.len > 1 and isHelpFlag(args[1])) {
+            try printEvalHelp(ctx, stdout);
+            return 0;
+        }
+
+        const parsed = parseEvalArgs(args[1..]) catch {
+            return output.usageError(ctx, stdout, stderr, "wt step eval", "Usage: wt step eval [--dry-run] <template>");
+        };
+
+        return evalTemplate(ctx, parsed, stdout, stderr);
+    }
+
+    if (std.mem.eql(u8, args[0], "for-each")) {
+        if (args.len > 1 and isHelpFlag(args[1])) {
+            try printForEachHelp(ctx, stdout);
+            return 0;
+        }
+
+        const parsed = parseForEachArgs(args[1..]) catch {
+            return output.usageError(ctx, stdout, stderr, "wt step for-each", "Usage: wt step for-each -- <command> [args...]");
+        };
+
+        return forEach(ctx, parsed, stdout, stderr);
     }
 
     if (std.mem.eql(u8, args[0], "diff")) {
@@ -324,10 +360,38 @@ fn printHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
         \\  commit  Commit staged or selected changes with an explicit message
         \\  copy-ignored  Copy ignored files and directories between worktrees
         \\  diff  Show all changes since branching
+        \\  eval  Render a template in the current worktree context
+        \\  for-each  Run a command in each non-prunable worktree
         \\  prune  Remove worktrees for merged branches
         \\  push  Fast-forward a target branch to the current branch
         \\  rebase  Rebase the current branch onto a target
         \\  squash  Squash current branch changes into one commit
+        \\
+    );
+}
+
+fn printEvalHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
+    try output.commandHelp(ctx, stdout, "wt step eval",
+        \\Render a template in the current worktree context.
+        \\
+        \\Usage:
+        \\  wt step eval [--dry-run] <template>
+        \\
+        \\Examples:
+        \\  wt step eval "{{ branch }}"
+        \\  wt step eval "{{ branch | sanitize_db }}"
+        \\
+    );
+}
+
+fn printForEachHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
+    try output.commandHelp(ctx, stdout, "wt step for-each",
+        \\Run a command in each non-prunable worktree.
+        \\
+        \\Usage:
+        \\  wt step for-each -- <command> [args...]
+        \\
+        \\Command arguments are rendered as templates for each worktree.
         \\
     );
 }
@@ -402,6 +466,26 @@ fn printDiffHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
         \\  wt step diff main -- --name-only
         \\
     );
+}
+
+fn parseEvalArgs(args: []const []const u8) !ParsedEvalArgs {
+    var parsed = ParsedEvalArgs{ .template = "" };
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--dry-run")) {
+            parsed.dry_run = true;
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, "-")) return error.InvalidArguments;
+        if (parsed.template.len != 0) return error.InvalidArguments;
+        parsed.template = arg;
+    }
+    if (parsed.template.len == 0) return error.InvalidArguments;
+    return parsed;
+}
+
+fn parseForEachArgs(args: []const []const u8) !ParsedForEachArgs {
+    if (args.len < 2 or !std.mem.eql(u8, args[0], "--")) return error.InvalidArguments;
+    return .{ .argv = args[1..] };
 }
 
 fn parseDiffArgs(args: []const []const u8) !ParsedDiffArgs {
@@ -521,6 +605,126 @@ fn parseStageMode(raw: []const u8) ?StageMode {
     if (std.mem.eql(u8, raw, "tracked")) return .tracked;
     if (std.mem.eql(u8, raw, "none")) return .none;
     return null;
+}
+
+fn evalTemplate(
+    ctx: output.Context,
+    parsed: ParsedEvalArgs,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const allocator = ctx.allocator;
+    var listed = worktree.list(allocator, stderr) catch return 1;
+    defer listed.deinit(allocator);
+
+    var info = git_repo.getRepoInfoWithWorktrees(allocator, listed.entries) catch {
+        try stderr.writeAll("failed to resolve repository info\n");
+        return 1;
+    };
+    defer git_repo.freeRepoInfo(allocator, &info);
+
+    const current_path = repoRoot(allocator) catch {
+        try stderr.writeAll("failed to resolve current worktree\n");
+        return 1;
+    };
+    defer allocator.free(current_path);
+
+    const current_entry = findWorktreeByPath(listed.entries, current_path) orelse {
+        try stderr.writeAll("current directory is not inside a git worktree\n");
+        return 1;
+    };
+
+    var variables = buildTemplateVariables(allocator, info, current_entry) catch {
+        try stderr.writeAll("failed to build template variables\n");
+        return 1;
+    };
+    defer variables.deinit(allocator);
+
+    const rendered = template.render(allocator, parsed.template, variables.items) catch |err| {
+        try writeTemplateError(stderr, err);
+        return 1;
+    };
+    defer allocator.free(rendered);
+
+    if (parsed.dry_run) {
+        for (variables.items) |variable| {
+            try stderr.print("{s}={s}\n", .{ variable.name, variable.value });
+        }
+        try stderr.writeAll("---\n");
+        try stderr.print("Result: {s}\n", .{rendered});
+        return 0;
+    }
+
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt step eval", .{ .result = rendered });
+    } else {
+        try stdout.print("{s}\n", .{rendered});
+    }
+    return 0;
+}
+
+fn forEach(
+    ctx: output.Context,
+    parsed: ParsedForEachArgs,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (output.isJson(ctx)) {
+        try output.emitError(ctx, stdout, "wt step for-each", "wt step for-each emits command output; run without --format json");
+        return 1;
+    }
+
+    const allocator = ctx.allocator;
+    var listed = worktree.list(allocator, stderr) catch return 1;
+    defer listed.deinit(allocator);
+
+    var info = git_repo.getRepoInfoWithWorktrees(allocator, listed.entries) catch {
+        try stderr.writeAll("failed to resolve repository info\n");
+        return 1;
+    };
+    defer git_repo.freeRepoInfo(allocator, &info);
+
+    var completed: usize = 0;
+    var failed: usize = 0;
+    for (listed.entries) |entry| {
+        if (entry.prunable != null) continue;
+        if (entry.bare) continue;
+
+        const label = worktreeLabel(entry);
+        try stderr.print("Running in {s}...\n", .{label});
+
+        var variables = buildTemplateVariables(allocator, info, entry) catch {
+            try stderr.writeAll("failed to build template variables\n");
+            failed += 1;
+            continue;
+        };
+        defer variables.deinit(allocator);
+
+        const rendered_argv = renderArgv(allocator, parsed.argv, variables.items) catch |err| {
+            try writeTemplateError(stderr, err);
+            failed += 1;
+            continue;
+        };
+        defer freeArgv(allocator, rendered_argv);
+
+        var result = try runInPath(allocator, rendered_argv, entry.path);
+        defer result.deinit(allocator);
+
+        try stdout.writeAll(result.stdout);
+        try stderr.writeAll(result.stderr);
+        if (result.succeeded()) {
+            completed += 1;
+        } else {
+            failed += 1;
+        }
+    }
+
+    if (failed != 0) {
+        try stderr.print("Completed in {d} worktrees; {d} failed.\n", .{ completed, failed });
+        return 1;
+    }
+    try stderr.print("Completed in {d} worktrees.\n", .{completed});
+    return 0;
 }
 
 fn commit(
@@ -915,6 +1119,154 @@ fn findWorktreePathByBranch(entries: []const worktree.Entry, branch: []const u8)
         }
     }
     return null;
+}
+
+fn findWorktreeByPath(entries: []const worktree.Entry, path_value: []const u8) ?worktree.Entry {
+    for (entries) |entry| {
+        if (std.mem.eql(u8, entry.path, path_value)) return entry;
+    }
+    return null;
+}
+
+fn worktreeLabel(entry: worktree.Entry) []const u8 {
+    if (entry.branch) |branch| return branch;
+    if (entry.detached) return "detached";
+    return entry.path;
+}
+
+const TemplateVariables = struct {
+    items: []template.Variable,
+    names: [][]u8,
+    values: [][]u8,
+
+    fn deinit(self: *TemplateVariables, allocator: std.mem.Allocator) void {
+        for (self.names) |name| allocator.free(name);
+        for (self.values) |value| allocator.free(value);
+        allocator.free(self.items);
+        allocator.free(self.names);
+        allocator.free(self.values);
+    }
+};
+
+fn buildTemplateVariables(
+    allocator: std.mem.Allocator,
+    info: @import("../path.zig").RepoInfo,
+    entry: worktree.Entry,
+) !TemplateVariables {
+    var names = std.ArrayList([]u8).empty;
+    var values = std.ArrayList([]u8).empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        for (values.items) |value| allocator.free(value);
+        names.deinit(allocator);
+        values.deinit(allocator);
+    }
+
+    const branch = entry.branch orelse "";
+    const commit_hash = entry.head orelse "";
+    const short_commit = if (commit_hash.len > 7) commit_hash[0..7] else commit_hash;
+    const worktree_name = std.fs.path.basename(entry.path);
+    const default_branch = git_repo.getDefaultBase(allocator) catch try allocator.dupe(u8, "main");
+    defer allocator.free(default_branch);
+    const cwd = std.process.getCwdAlloc(allocator) catch try allocator.dupe(u8, "");
+    defer allocator.free(cwd);
+
+    try appendTemplateVariable(allocator, &names, &values, "branch", branch);
+    try appendTemplateVariable(allocator, &names, &values, "commit", commit_hash);
+    try appendTemplateVariable(allocator, &names, &values, "short_commit", short_commit);
+    try appendTemplateVariable(allocator, &names, &values, "cwd", cwd);
+    try appendTemplateVariable(allocator, &names, &values, "default_branch", default_branch);
+    try appendTemplateVariable(allocator, &names, &values, "main_worktree", info.name);
+    try appendTemplateVariable(allocator, &names, &values, "main_worktree_path", info.main);
+    try appendTemplateVariable(allocator, &names, &values, "primary_worktree_path", info.main);
+    try appendTemplateVariable(allocator, &names, &values, "repo", info.name);
+    try appendTemplateVariable(allocator, &names, &values, "repo_path", info.main);
+    try appendTemplateVariable(allocator, &names, &values, "repo_root", info.main);
+    try appendTemplateVariable(allocator, &names, &values, "worktree", entry.path);
+    try appendTemplateVariable(allocator, &names, &values, "worktree_name", worktree_name);
+    try appendTemplateVariable(allocator, &names, &values, "worktree_path", entry.path);
+
+    const name_slice = try names.toOwnedSlice(allocator);
+    errdefer allocator.free(name_slice);
+    const value_slice = try values.toOwnedSlice(allocator);
+    errdefer allocator.free(value_slice);
+    const items = try allocator.alloc(template.Variable, name_slice.len);
+    errdefer allocator.free(items);
+
+    for (items, 0..) |*item, index| {
+        item.* = .{ .name = name_slice[index], .value = value_slice[index] };
+    }
+
+    return .{
+        .items = items,
+        .names = name_slice,
+        .values = value_slice,
+    };
+}
+
+fn appendTemplateVariable(
+    allocator: std.mem.Allocator,
+    names: *std.ArrayList([]u8),
+    values: *std.ArrayList([]u8),
+    name: []const u8,
+    value: []const u8,
+) !void {
+    const owned_name = try allocator.dupe(u8, name);
+    errdefer allocator.free(owned_name);
+    const owned_value = try allocator.dupe(u8, value);
+    errdefer allocator.free(owned_value);
+    try names.append(allocator, owned_name);
+    try values.append(allocator, owned_value);
+}
+
+fn renderArgv(
+    allocator: std.mem.Allocator,
+    argv: []const []const u8,
+    variables: []const template.Variable,
+) ![]const []const u8 {
+    var rendered = std.ArrayList([]const u8).empty;
+    errdefer {
+        for (rendered.items) |arg| allocator.free(arg);
+        rendered.deinit(allocator);
+    }
+
+    for (argv) |arg| {
+        try rendered.append(allocator, try template.render(allocator, arg, variables));
+    }
+    return rendered.toOwnedSlice(allocator);
+}
+
+fn freeArgv(allocator: std.mem.Allocator, argv: []const []const u8) void {
+    for (argv) |arg| allocator.free(arg);
+    allocator.free(argv);
+}
+
+fn runInPath(
+    allocator: std.mem.Allocator,
+    argv: []const []const u8,
+    cwd: []const u8,
+) !proc.Captured {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = argv,
+        .cwd = cwd,
+        .max_output_bytes = 100 * 1024 * 1024,
+    });
+
+    return .{
+        .term = result.term,
+        .stdout = result.stdout,
+        .stderr = result.stderr,
+    };
+}
+
+fn writeTemplateError(stderr: *std.Io.Writer, err: anyerror) !void {
+    switch (err) {
+        error.UnknownVariable => try stderr.writeAll("template error: unknown variable\n"),
+        error.UnknownFilter => try stderr.writeAll("template error: unknown filter\n"),
+        error.InvalidTemplate => try stderr.writeAll("template error: invalid template\n"),
+        else => try stderr.print("template error: {s}\n", .{@errorName(err)}),
+    }
 }
 
 fn currentBranch(allocator: std.mem.Allocator) ![]u8 {

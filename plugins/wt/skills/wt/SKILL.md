@@ -1,6 +1,6 @@
 ---
 name: wt
-description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', wt aliases, 'wt switch', 'wt sw', 'wt cd', 'wt jump', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt step diff', 'wt step copy-ignored', 'wt step commit', 'wt step squash', 'wt step rebase', 'wt step push', 'wt step prune', 'wt merge', 'wt ui', 'wt pr', 'wt mr', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
+description: "This skill should be used when the user asks about 'wt', 'worktree', 'worktrees', wt aliases, 'wt switch', 'wt sw', 'wt cd', 'wt jump', 'wt create', 'wt checkout', 'wt co', 'wt list', 'wt ls', 'wt remove', 'wt rm', 'wt done', 'wt step diff', 'wt step copy-ignored', 'wt step commit', 'wt step squash', 'wt step rebase', 'wt step push', 'wt step eval', 'wt step for-each', 'wt step prune', 'wt merge', 'wt ui', 'wt pr', 'wt mr', 'wt hook show', or 'wt config alias show|dry-run', or mentions managing git worktrees with wt-zig. Also use when the user asks how wt-zig works, how to use wt commands, or how to organize branches with worktrees."
 ---
 
 # Working with wt-zig - Git Worktree Manager
@@ -33,6 +33,8 @@ Never switch branches in the main checkout. Create a worktree per task to keep t
 | `wt step squash [target] --message <message> [--stage all\|tracked\|none]` | Squash branch changes into one commit |
 | `wt step rebase [target]` | Rebase current branch onto target |
 | `wt step push [target]` | Fast-forward target branch to current branch |
+| `wt step eval [--dry-run] <template>` | Evaluate a template for each worktree |
+| `wt step for-each -- <command> [args...]` | Run a command for each worktree; template vars can be used in args |
 | `wt step prune` | Wrapper around merged-worktree cleanup |
 | `wt merge [target] [--no-remove] [--no-ff] [--squash] [--rebase] [--push] [--no-hooks] [--message <message>]` | Merge current branch into target and clean up source worktree |
 | `wt ui [jump\|remove] [--force]` | Open gum-powered interactive worktree UI |
@@ -41,6 +43,8 @@ Never switch branches in the main checkout. Create a worktree per task to keep t
 | `wt status` | Overview of all worktrees (branch/path/dirty/ahead-behind) |
 | `wt info` | Show active strategy, pattern, and variables |
 | `wt config show` | Show effective config with sources |
+| `wt config alias show` / `wt config alias dry-run <name>` | Inspect configured aliases or preview alias commands |
+| `wt hook show` | Inspect configured hook commands |
 | `wt cleanup --stale` | Include stale worktrees (deleted remotes or old commits) |
 | `wt prune` | Clean stale worktree admin files |
 | `wt migrate` | Migrate worktrees to configured paths |
@@ -65,6 +69,8 @@ The `pattern` setting controls the path template. Variables include worktree roo
 - Global config file: `~/.config/wt/config.toml` (or `WT_CONFIG` / `--config`)
 - Per-repo override: `.wt.toml` in repo root
 - `[aliases]` entries define custom wt commands. A string runs one shell command; an array runs commands serially; extra CLI args are appended to the last command.
+- `wt config alias show` surfaces the alias catalog, `wt config alias dry-run <name> [-- <args>...]` previews alias commands, and `wt hook show` displays configured hooks.
+- `wt step eval [--dry-run] <template>` uses the same `{.branch}`-style template variables as worktree paths, and `wt step for-each -- <command> [args...]` can embed those variables in forwarded command args.
 - `[step.copy-ignored] exclude = ["cache/", "*.sqlite", "!cache/keep.sqlite"]` skips copy candidates with gitignore-like patterns and supports negated exceptions.
 - `wt merge` defaults stay compatible: merge into the default base and clean up the source worktree. `--rebase`, `--squash`, `--push`, `--no-ff`, and hooks/message controls are opt-in.
 - Common settings: `root`, `strategy`, `pattern`, `separator`, hooks
