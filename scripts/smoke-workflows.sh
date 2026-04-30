@@ -37,6 +37,16 @@ run_wt() {
     )
 }
 
+run_wt_oldpwd() {
+    local cwd="$1"
+    local oldpwd="$2"
+    shift 2
+    (
+        cd "$cwd"
+        OLDPWD="$oldpwd" "$wt_bin" "$@"
+    )
+}
+
 assert_eq() {
     local expected="$1"
     local actual="$2"
@@ -111,9 +121,52 @@ assert_contains "$(run_wt "$repo_dir" hook show)" "pre_start: echo pre start" "h
 assert_eq "main" "$(run_wt "$repo_dir" step eval "{{ branch }}")" "step eval branch"
 
 git -C "$repo_dir" worktree add "$feature_dir" -b feature >/dev/null
+
+switch_main_output="$(run_wt "$feature_dir" sw ^)"
+assert_contains "$switch_main_output" "Switching to worktree: $repo_dir" "switch main shortcut"
+assert_contains "$switch_main_output" "wt navigating to: $repo_dir" "switch main navigation"
+switch_current_output="$(run_wt "$feature_dir" switch @)"
+assert_contains "$switch_current_output" "Switching to worktree: $feature_dir" "switch current shortcut"
+assert_contains "$switch_current_output" "wt navigating to: $feature_dir" "switch current navigation"
+switch_previous_output="$(run_wt_oldpwd "$feature_dir" "$repo_dir" jump -)"
+assert_contains "$switch_previous_output" "Switching to worktree: $repo_dir" "switch previous shortcut"
+cd_alias_output="$(run_wt "$repo_dir" cd feature)"
+assert_contains "$cd_alias_output" "Switching to worktree: $feature_dir" "switch cd alias"
+j_alias_output="$(run_wt "$repo_dir" j feature)"
+assert_contains "$j_alias_output" "Switching to worktree: $feature_dir" "switch j alias"
+jump_json_output="$(run_wt "$repo_dir" --format json jump feature)"
+assert_contains "$jump_json_output" '"command":"wt switch"' "switch jump alias json command"
+assert_contains "$jump_json_output" '"status":"switched"' "switch jump alias json status"
+assert_contains "$jump_json_output" "\"navigate_to\":\"$feature_dir\"" "switch jump alias json navigate"
+if missing_switch_output="$(run_wt "$repo_dir" switch missing-branch 2>&1)"; then
+    fail "switch missing branch unexpectedly succeeded"
+else
+    assert_contains "$missing_switch_output" "branch 'missing-branch' does not exist" "switch missing branch text"
+    assert_contains "$missing_switch_output" "Use 'wt switch --create missing-branch' to create a new branch" "switch missing branch hint"
+fi
+if missing_switch_json="$(run_wt "$repo_dir" --format json switch missing-json 2>&1)"; then
+    fail "switch missing branch json unexpectedly succeeded"
+else
+    assert_contains "$missing_switch_json" '"command":"wt switch"' "switch missing json command"
+    assert_contains "$missing_switch_json" "\"error\":\"branch 'missing-json' does not exist\\nUse 'wt switch --create missing-json' to create a new branch\"" "switch missing json error"
+fi
+
 for_each_output="$(run_wt "$repo_dir" step for-each -- printf '%s\n' "{{ branch }}")"
 assert_contains "$for_each_output" "main" "for-each main branch"
 assert_contains "$for_each_output" "feature" "for-each feature branch"
+
+done_dir="$run_root/done-worktree"
+git -C "$repo_dir" worktree add "$done_dir" -b done-smoke >/dev/null
+done_output="$(run_wt "$done_dir" done --no-delete-branch)"
+assert_contains "$done_output" "Removed worktree: $done_dir" "done removes current worktree"
+assert_contains "$done_output" "Kept branch: done-smoke" "done keeps branch when requested"
+assert_contains "$done_output" "wt navigating to: $repo_dir" "done navigation"
+if [[ -d "$done_dir" ]]; then
+    fail "done worktree directory still exists"
+fi
+case "$(git -C "$repo_dir" worktree list)" in
+    *"$done_dir"* ) fail "done worktree still listed by git" ;;
+esac
 
 write_lines "$feature_dir/feature.txt" "feature-1"
 run_wt "$feature_dir" step commit -m "feature commit" >/dev/null

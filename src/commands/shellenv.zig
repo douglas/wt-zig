@@ -109,7 +109,7 @@ fn unixShellenv() []const u8 {
     \\                return 0
     \\                ;;
     \\            step)
-    \\                COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each prune push rebase squash" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each promote prune push rebase relocate squash" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            merge)
@@ -117,7 +117,7 @@ fn unixShellenv() []const u8 {
     \\                return 0
     \\                ;;
     \\            config)
-    \\                COMPREPLY=( $(compgen -W "init show path alias" -- "$cur") )
+    \\                COMPREPLY=( $(compgen -W "init show path alias approvals" -- "$cur") )
     \\                return 0
     \\                ;;
     \\            hook)
@@ -199,7 +199,7 @@ fn unixShellenv() []const u8 {
     \\                    ;;
     \\                step)
     \\                    local -a step_cmds
-    \\                    step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                    step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'promote:Swap a branch into the main worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'relocate:Move mismatched worktrees to configured paths' 'squash:Squash branch changes into one commit')
     \\                    _describe 'step command' step_cmds
     \\                    ;;
     \\                merge)
@@ -214,6 +214,7 @@ fn unixShellenv() []const u8 {
     \\                        'show:Show effective configuration with sources'
     \\                        'path:Print the config file path'
     \\                        'alias:Inspect configured aliases'
+    \\                        'approvals:Manage project command approvals'
     \\                    )
     \\                    _describe 'config command' config_cmds
     \\                    ;;
@@ -333,7 +334,7 @@ fn powershellShellenv() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'step') {
-    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'promote', 'prune', 'push', 'rebase', 'relocate', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'merge') {
@@ -341,7 +342,7 @@ fn powershellShellenv() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
-    \\            @('init', 'show', 'path', 'alias') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('init', 'show', 'path', 'alias', 'approvals') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'hook') {
@@ -385,16 +386,75 @@ test "shellenv includes json guard and completion blocks" {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Register-ArgumentCompleter") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "Set-Location -LiteralPath $cdPath") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "@('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash')") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "@('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'promote', 'prune', 'push', 'rebase', 'relocate', 'squash')") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "@('init', 'show', 'path', 'alias', 'approvals')") != null);
     } else {
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "--format json") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "if (( $+functions[compdef] ))") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each prune push rebase squash") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each promote prune push rebase relocate squash") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion\"") != null);
-        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias") != null);
+        try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias approvals") != null);
         try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "awk '/^wt navigating to: /") == null);
     }
+}
+
+test "shellenv rejects extra args in text mode" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .text },
+        &.{"extra"},
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "Usage: wt shellenv") != null);
+}
+
+test "shellenv rejects extra args in json mode" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+
+    var stdout_al = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_al.adaptToNewApi(&stdout_io_buf);
+    var stderr_al = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_al.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .json },
+        &.{"extra"},
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"ok\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt shellenv\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"error\":\"Usage: wt shellenv\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buffer.items.len);
 }
 
 test "shellenv emits json note in json mode" {

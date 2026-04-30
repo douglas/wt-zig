@@ -370,6 +370,62 @@ test "completion bash script contains completer" {
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias approvals") != null);
 }
 
+test "completion rejects multiple shell arguments in text mode" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [1024]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .text },
+        &.{ "bash", "zsh" },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "Usage: wt completion [bash|fish|powershell|zsh]") != null);
+}
+
+test "completion rejects multiple shell arguments in json mode" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [1024]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .json },
+        &.{ "bash", "zsh" },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"ok\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt completion\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"error\":\"Usage: wt completion [bash|fish|powershell|zsh]\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buffer.items.len);
+}
+
 test "completion reports unknown shell in text mode" {
     const allocator = std.testing.allocator;
     var stdout_buffer = std.ArrayList(u8).empty;

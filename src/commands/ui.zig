@@ -1,5 +1,6 @@
 const std = @import("std");
 const config = @import("../config.zig");
+const config_types = @import("../config_types.zig");
 const output = @import("../output.zig");
 const prompt = @import("../prompt.zig");
 const remove_cmd = @import("remove.zig");
@@ -402,4 +403,34 @@ test "parseArgs accepts jump mode" {
 
 test "parseArgs rejects unknown arguments" {
     try std.testing.expectError(error.InvalidArguments, parseArgs(&.{"wat"}));
+}
+
+test "ui rejects json mode before requiring gum" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [1024]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        .{ .allocator = allocator, .format = .json },
+        &config_types.testing_defaults,
+        &.{"jump"},
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"ok\":false") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt ui\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"error\":\"wt ui is interactive; run without --format json\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buffer.items.len);
 }

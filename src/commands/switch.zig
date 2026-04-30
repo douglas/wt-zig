@@ -337,6 +337,11 @@ fn parseArgs(args: []const []const u8) !ParsedArgs {
             parsed.execute_args = args[index + 1 ..];
             return parsed;
         }
+        if (std.mem.eql(u8, arg, "-")) {
+            if (parsed.target != null) return error.TooManyTargets;
+            parsed.target = arg;
+            continue;
+        }
         if (std.mem.startsWith(u8, arg, "-")) return error.InvalidArguments;
         if (parsed.target != null) return error.TooManyTargets;
         parsed.target = arg;
@@ -364,6 +369,11 @@ test "parseArgs accepts execute and trailing args" {
     try std.testing.expectEqualStrings("feature", parsed.target.?);
     try std.testing.expectEqualStrings("claude", parsed.execute.?);
     try std.testing.expectEqual(2, parsed.execute_args.len);
+}
+
+test "parseArgs accepts previous worktree shortcut" {
+    const parsed = try parseArgs(&.{"-"});
+    try std.testing.expectEqualStrings("-", parsed.target.?);
 }
 
 test "buildExecuteCommand quotes trailing args" {

@@ -19,9 +19,9 @@ Legend:
 | Multi-worktree relocation (`wt step relocate`) | Medium | Parser coverage plus fixture smoke coverage verify branch-filtered dry-run and swap/cycle relocation with real git worktrees. Dirty/locked/clobber edge cases still lean on unit helpers and targeted manual validation. |
 | Branch promotion (`wt step promote`) | Medium | Fixture smoke coverage verifies promote/restore branch swaps and gitignored file/directory staging across both worktrees. |
 | Command argument parsing (`commands/*`) | Medium | Most commands cover parse helpers; some run-path validation branches remain untested. |
-| Completion command (`commands/completion.zig`) | Medium | Help and bash output covered; unknown-shell behavior (text/json) now covered; command catalogs now expose `hook`, `config alias`, and step template discoverability. |
-| Shellenv command (`commands/shellenv.zig`) | Medium | Generated shell blocks covered; JSON response path now covered; shell catalogs mirror `hook`, `config alias`, and step template discoverability. |
-| Interactive command runtime flows (`switch/checkout/remove/pr/mr/ui`) | Medium | Many helpers are covered; interactive/runtime command behavior still leans on parity/e2e. |
+| Completion command (`commands/completion.zig`) | High | Help, bash output, unknown-shell behavior, and multi-arg usage errors are covered in text and JSON modes; command catalogs expose `hook`, `config alias`, and step template discoverability. |
+| Shellenv command (`commands/shellenv.zig`) | High | Generated shell blocks, JSON response path, and extra-arg usage errors are covered; shell catalogs mirror `hook`, `config alias`, approval, promote, and relocate discoverability. |
+| Interactive command runtime flows (`switch/checkout/remove/pr/mr/ui`) | Medium | `wt switch` shortcut/alias navigation, no-match behavior, `wt done` removal, and `wt ui` JSON rejection are covered; external PR/MR and gum-driven UI flows still lean on parity/e2e/manual checks. |
 
 ## Newly Added In This Pass
 
@@ -40,11 +40,16 @@ Legend:
 13. Approval-management behavior for configured alias and hook command strings, including saved approvals and fixture-smoke approval setup.
 14. `wt step relocate` parser coverage plus fixture-smoke branch-filter and swap/cycle relocation.
 15. `wt step promote` dirty-worktree refusal and ignored-file staging/swap parity.
+16. `wt shellenv` extra-arg usage errors in text and JSON modes.
+17. `wt completion` multi-arg usage errors in text and JSON modes.
+18. `wt ui` JSON-mode rejection before gum lookup.
+19. Fixture-based smoke coverage for `wt switch` shortcuts/aliases and no-match text/JSON behavior.
+20. Fixture-based smoke coverage for `wt done` removing the current linked worktree and navigating back.
 
 ## Next 5 High-Value Tests
 
-1. `wt shellenv` extra-arg usage error in text and JSON modes.
-2. `wt completion` multi-arg usage error in text and JSON modes.
-3. `wt ui` JSON-mode rejection path (`wt ui is interactive; run without --format json`).
-4. `wt switch` command-level shortcut and no-match behavior (text + JSON) with a temporary git worktree fixture.
-5. Smoke coverage for `wt switch` shortcut navigation and `wt done` removal in temporary git worktree fixtures.
+1. Approval TTY prompt acceptance and rejection through a reliable PTY-backed harness.
+2. `wt step relocate --clobber` backup behavior against an existing non-worktree target.
+3. `wt step relocate` dirty and locked worktree skip behavior with real git worktree fixtures.
+4. Dispatch-level unknown-command behavior in text and JSON modes through `app.run`.
+5. External PR/MR shortcut failure mappings when `gh` or `glab` are unavailable.
