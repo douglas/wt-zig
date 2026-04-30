@@ -223,3 +223,74 @@ test "parseRootArgs rejects missing format value" {
 test "parseRootArgs rejects unsupported format value" {
     try std.testing.expectError(error.UnsupportedFormatValue, parseRootArgs(std.testing.allocator, &.{ "--format", "yaml" }));
 }
+
+test "run reports unknown command in text mode" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    const root = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const config_path = try std.fs.path.join(allocator, &.{ root, "config.toml" });
+    defer allocator.free(config_path);
+
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        allocator,
+        &.{ "wt", "--config", config_path, "wat" },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "Unknown command: wat") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "Usage:") != null);
+}
+
+test "run reports unknown command in json mode" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    const root = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    const config_path = try std.fs.path.join(allocator, &.{ root, "config.toml" });
+    defer allocator.free(config_path);
+
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const exit_code = try run(
+        allocator,
+        &.{ "wt", "--config", config_path, "--format", "json", "wat" },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, exit_code);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "unknown command \"wat\" for \"wt\"") != null);
+}

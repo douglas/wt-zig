@@ -85,48 +85,8 @@ pub fn runRemoteCommand(
     const safe_input = prompt.sanitizeForTerminal(allocator, input) catch input;
     defer if (safe_input.ptr != input.ptr) allocator.free(safe_input);
 
-    const resolved = pr_git.resolveBranchName(allocator, remote_type, input, stderr) catch |err| switch (err) {
-        error.InvalidPullRequestInput => {
-            if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), safe_input });
-                defer allocator.free(message);
-                try output.emitError(ctx, stdout, command_name, message);
-            } else {
-                try stderr.print("invalid {s} number or URL: {s}\n", .{ pr_git.commandName(remote_type), safe_input });
-            }
-            return 1;
-        },
-        error.MissingPlatformCli => {
-            if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "'{s}' CLI not found", .{cliName(remote_type)});
-                defer allocator.free(message);
-                try output.emitError(ctx, stdout, command_name, message);
-            } else {
-                try stderr.print("'{s}' CLI not found\n", .{cliName(remote_type)});
-            }
-            return 1;
-        },
-        error.PlatformLookupFailed => {
-            if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "failed to look up branch for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
-                defer allocator.free(message);
-                try output.emitError(ctx, stdout, command_name, message);
-            } else {
-                try stderr.print("failed to look up branch for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
-            }
-            return 1;
-        },
-        error.EmptyBranchName => {
-            if (output.isJson(ctx)) {
-                const message = try std.fmt.allocPrint(allocator, "empty branch name returned for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
-                defer allocator.free(message);
-                try output.emitError(ctx, stdout, command_name, message);
-            } else {
-                try stderr.print("empty branch name returned for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
-            }
-            return 1;
-        },
-        else => return err,
+    const resolved = pr_git.resolveBranchName(allocator, remote_type, input, stderr) catch |err| {
+        return emitResolveError(ctx, stdout, stderr, remote_type, safe_input, err);
     };
     defer allocator.free(resolved.id);
     defer allocator.free(resolved.branch);
@@ -206,6 +166,62 @@ pub fn runRemoteCommand(
     return 0;
 }
 
+fn emitResolveError(
+    ctx: output.Context,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+    remote_type: pr_git.RemoteType,
+    safe_input: []const u8,
+    err: anyerror,
+) !u8 {
+    const allocator = ctx.allocator;
+    const command_name = commandName(remote_type);
+
+    switch (err) {
+        error.InvalidPullRequestInput => {
+            if (output.isJson(ctx)) {
+                const message = try std.fmt.allocPrint(allocator, "invalid {s} number or URL: {s}", .{ pr_git.commandName(remote_type), safe_input });
+                defer allocator.free(message);
+                try output.emitError(ctx, stdout, command_name, message);
+            } else {
+                try stderr.print("invalid {s} number or URL: {s}\n", .{ pr_git.commandName(remote_type), safe_input });
+            }
+            return 1;
+        },
+        error.MissingPlatformCli => {
+            if (output.isJson(ctx)) {
+                const message = try std.fmt.allocPrint(allocator, "'{s}' CLI not found", .{cliName(remote_type)});
+                defer allocator.free(message);
+                try output.emitError(ctx, stdout, command_name, message);
+            } else {
+                try stderr.print("'{s}' CLI not found\n", .{cliName(remote_type)});
+            }
+            return 1;
+        },
+        error.PlatformLookupFailed => {
+            if (output.isJson(ctx)) {
+                const message = try std.fmt.allocPrint(allocator, "failed to look up branch for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
+                defer allocator.free(message);
+                try output.emitError(ctx, stdout, command_name, message);
+            } else {
+                try stderr.print("failed to look up branch for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
+            }
+            return 1;
+        },
+        error.EmptyBranchName => {
+            if (output.isJson(ctx)) {
+                const message = try std.fmt.allocPrint(allocator, "empty branch name returned for {s}: {s}", .{ pr_git.label(remote_type), safe_input });
+                defer allocator.free(message);
+                try output.emitError(ctx, stdout, command_name, message);
+            } else {
+                try stderr.print("empty branch name returned for {s}: {s}\n", .{ pr_git.label(remote_type), safe_input });
+            }
+            return 1;
+        },
+        else => return err,
+    }
+}
+
 fn cliName(remote_type: pr_git.RemoteType) []const u8 {
     return switch (remote_type) {
         .github => "gh",
@@ -232,4 +248,84 @@ fn listLabel(remote_type: pr_git.RemoteType) []const u8 {
         .github => "pull requests",
         .gitlab => "merge requests",
     };
+}
+
+test "missing platform cli maps to text errors" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const pr_exit = try emitResolveError(
+        .{ .allocator = allocator, .format = .text },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+        .github,
+        "123",
+        error.MissingPlatformCli,
+    );
+    const mr_exit = try emitResolveError(
+        .{ .allocator = allocator, .format = .text },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+        .gitlab,
+        "456",
+        error.MissingPlatformCli,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, pr_exit);
+    try std.testing.expectEqual(1, mr_exit);
+    try std.testing.expectEqual(@as(usize, 0), stdout_buffer.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "'gh' CLI not found") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stderr_buffer.items, "'glab' CLI not found") != null);
+}
+
+test "missing platform cli maps to json errors" {
+    const allocator = std.testing.allocator;
+    var stdout_buffer = std.ArrayList(u8).empty;
+    defer stdout_buffer.deinit(allocator);
+    var stderr_buffer = std.ArrayList(u8).empty;
+    defer stderr_buffer.deinit(allocator);
+    var stdout_writer = stdout_buffer.writer(allocator);
+    var stdout_io_buf: [4096]u8 = undefined;
+    var stdout_adapted = stdout_writer.adaptToNewApi(&stdout_io_buf);
+    var stderr_writer = stderr_buffer.writer(allocator);
+    var stderr_io_buf: [4096]u8 = undefined;
+    var stderr_adapted = stderr_writer.adaptToNewApi(&stderr_io_buf);
+
+    const pr_exit = try emitResolveError(
+        .{ .allocator = allocator, .format = .json },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+        .github,
+        "123",
+        error.MissingPlatformCli,
+    );
+    const mr_exit = try emitResolveError(
+        .{ .allocator = allocator, .format = .json },
+        &stdout_adapted.new_interface,
+        &stderr_adapted.new_interface,
+        .gitlab,
+        "456",
+        error.MissingPlatformCli,
+    );
+    try stdout_adapted.new_interface.flush();
+    try stderr_adapted.new_interface.flush();
+
+    try std.testing.expectEqual(1, pr_exit);
+    try std.testing.expectEqual(1, mr_exit);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt pr\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"error\":\"'gh' CLI not found\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"command\":\"wt mr\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "\"error\":\"'glab' CLI not found\"") != null);
+    try std.testing.expectEqual(@as(usize, 0), stderr_buffer.items.len);
 }

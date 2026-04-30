@@ -9,14 +9,14 @@ Legend:
 
 | Area | Coverage | Notes |
 | --- | --- | --- |
-| Root dispatch and command registry (`app.zig`, `command.zig`, `aliases.zig`) | Medium | Built-in and configured alias resolution are covered; root arg parsing now covers `--format` errors; dispatch-level unknown-command behavior still relies mostly on parity/e2e. |
+| Root dispatch and command registry (`app.zig`, `command.zig`, `aliases.zig`) | Medium | Built-in and configured alias resolution, root arg parsing, and dispatch-level unknown-command behavior are covered; deeper dispatch branches still rely mostly on command-level tests and smoke coverage. |
 | Output and JSON envelope helpers (`output.zig`) | High | Serializer/envelope behavior is well covered across scalar, optional, nested, and slice types. |
 | Config, aliases, and path resolution (`config*.zig`, `aliases.zig`, `path.zig`) | High | Precedence, alias parsing/merging, copy-ignored excludes, defaults, rendering, and cleanup behavior are directly tested. |
 | Copy and filesystem safety (`copy_files.zig`, `cow_copy.zig`, `trash.zig`) | High | Traversal/symlink guards, strategy fallthrough, and copy behavior are covered. |
-| Git parsing helpers (`git/*.zig`) | Medium | Parsing and repo helper behavior are tested; command-level git-failure mappings are mostly validated via parity harness. |
+| Git parsing helpers (`git/*.zig`) | Medium | Parsing and repo helper behavior are tested; PR/MR missing-CLI failure mappings are covered; other command-level git-failure mappings are mostly validated via parity harness. |
 | Hook behavior (`hooks.zig`) | High | Hook env construction and pre/post/start failure handling are covered. |
-| Approval management for configured command strings | Medium | Unit coverage verifies project alias blocking, project-scoped approval parsing, and approval persistence; smoke coverage exercises `wt hook show` unapproved markers plus `wt config approvals add/show` before running repo-local aliases. TTY prompt behavior is implemented but still best covered manually. |
-| Multi-worktree relocation (`wt step relocate`) | Medium | Parser coverage plus fixture smoke coverage verify branch-filtered dry-run and swap/cycle relocation with real git worktrees. Dirty/locked/clobber edge cases still lean on unit helpers and targeted manual validation. |
+| Approval management for configured command strings | High | Unit coverage verifies project alias blocking, project-scoped approval parsing, and approval persistence; smoke coverage exercises unapproved markers, PTY-backed prompt accept/reject flows, and explicit approval add/show before running repo-local aliases. |
+| Multi-worktree relocation (`wt step relocate`) | High | Parser coverage plus fixture smoke coverage verify branch-filtered dry-run, swap/cycle relocation, clobber backups, dirty skips, and locked skips with real git worktrees. |
 | Branch promotion (`wt step promote`) | Medium | Fixture smoke coverage verifies promote/restore branch swaps and gitignored file/directory staging across both worktrees. |
 | Command argument parsing (`commands/*`) | Medium | Most commands cover parse helpers; some run-path validation branches remain untested. |
 | Completion command (`commands/completion.zig`) | High | Help, bash output, unknown-shell behavior, and multi-arg usage errors are covered in text and JSON modes; command catalogs expose `hook`, `config alias`, and step template discoverability. |
@@ -45,11 +45,16 @@ Legend:
 18. `wt ui` JSON-mode rejection before gum lookup.
 19. Fixture-based smoke coverage for `wt switch` shortcuts/aliases and no-match text/JSON behavior.
 20. Fixture-based smoke coverage for `wt done` removing the current linked worktree and navigating back.
+21. PTY-backed smoke coverage for approval prompt rejection and acceptance.
+22. Fixture-based smoke coverage for `wt step relocate --clobber` backup behavior.
+23. Fixture-based smoke coverage for `wt step relocate` dirty and locked worktree skips.
+24. Dispatch-level unknown-command behavior in text and JSON modes through `app.run`.
+25. PR/MR missing-platform-CLI error mappings for text and JSON modes.
 
 ## Next 5 High-Value Tests
 
-1. Approval TTY prompt acceptance and rejection through a reliable PTY-backed harness.
-2. `wt step relocate --clobber` backup behavior against an existing non-worktree target.
-3. `wt step relocate` dirty and locked worktree skip behavior with real git worktree fixtures.
-4. Dispatch-level unknown-command behavior in text and JSON modes through `app.run`.
-5. External PR/MR shortcut failure mappings when `gh` or `glab` are unavailable.
+1. Restore or configure the Go baseline checkout so `zig build parity` can run locally again.
+2. PR/MR success-path fixture coverage with stub `gh` and `glab` binaries.
+3. Gum-powered `wt ui` jump/remove smoke coverage with a stub `gum` binary.
+4. JSON envelope coverage for more command-level git failure paths.
+5. Cross-shell validation for generated shellenv completion blocks beyond static string checks.

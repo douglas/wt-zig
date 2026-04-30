@@ -47,6 +47,13 @@ run_wt_oldpwd() {
     )
 }
 
+run_wt_tty_input() {
+    local input="$1"
+    local cwd="$2"
+    shift 2
+    python3 "$repo_root/scripts/pty-run.py" "$input" "$cwd" "$wt_bin" "$@"
+}
+
 assert_eq() {
     local expected="$1"
     local actual="$2"
@@ -101,12 +108,23 @@ git -C "$repo_dir" commit -m "base" >/dev/null
 write_lines "$config_file" \
     "[aliases]" \
     "echo = \"printf '%s\\n' alias\"" \
+    "deny = \"printf '%s\\n' deny\"" \
     "ship = [\"printf '%s\\n' status\", \"printf '%s\\n' ship\"]" \
     "" \
     "[hooks]" \
     "pre_start = [\"echo pre start\"]"
 
 assert_contains "$(run_wt "$repo_dir" hook show)" "(requires approval)" "hook catalog marks unapproved project command"
+if reject_output="$(run_wt_tty_input "n" "$repo_dir" deny 2>&1)"; then
+    fail "approval rejection unexpectedly ran alias"
+else
+    assert_contains "$reject_output" "project alias \"deny\" requires approval" "approval rejection prompt"
+    assert_contains "$reject_output" "Allow and remember project commands? [y/N]:" "approval rejection confirmation"
+fi
+accept_output="$(run_wt_tty_input "y" "$repo_dir" echo prompted 2>&1)"
+assert_contains "$accept_output" "Allow and remember project commands? [y/N]:" "approval acceptance confirmation"
+assert_contains "$accept_output" "alias" "approval acceptance alias output"
+assert_contains "$(run_wt "$repo_dir" config approvals show)" "printf '%s\\n' alias" "approval prompt saved alias command"
 run_wt "$repo_dir" config approvals add >/dev/null
 assert_contains "$(<"$run_root/approvals.toml")" "[projects.\"repo\"]" "approvals are project scoped"
 assert_contains "$(run_wt "$repo_dir" config approvals show)" "printf '%s\\n' alias" "approvals include alias command"
@@ -231,6 +249,51 @@ esac
 run_wt "$relocate_main" step relocate >/dev/null
 assert_eq "alpha" "$(git -C "$relocate_alpha" branch --show-current)" "relocate swap alpha"
 assert_eq "beta" "$(git -C "$relocate_beta" branch --show-current)" "relocate swap beta"
+
+relocate_clobber_main="$run_root/relocate-clobber-main"
+git -c init.defaultBranch=main init "$relocate_clobber_main" >/dev/null
+git -C "$relocate_clobber_main" symbolic-ref HEAD refs/heads/main
+git -C "$relocate_clobber_main" config user.name "wt smoke"
+git -C "$relocate_clobber_main" config user.email "wt-smoke@example.com"
+write_lines "$relocate_clobber_main/base.txt" "base"
+git -C "$relocate_clobber_main" add base.txt
+git -C "$relocate_clobber_main" commit -m "base" >/dev/null
+write_lines "$relocate_clobber_main/.wt.toml" 'strategy = "sibling-repo"'
+relocate_clobber_source="$run_root/relocate-clobber-source"
+relocate_clobber_target="$run_root/relocate-clobber-main-alpha"
+git -C "$relocate_clobber_main" worktree add "$relocate_clobber_source" -b alpha >/dev/null 2>&1
+mkdir -p "$relocate_clobber_target"
+write_lines "$relocate_clobber_target/blocker.txt" "blocker"
+relocate_clobber_output="$(run_wt "$relocate_clobber_main" step relocate --clobber alpha)"
+backup_path="$(printf '%s\n' "$relocate_clobber_output" | awk '/^Backed up /{print $5; exit}')"
+assert_contains "$relocate_clobber_output" "Backed up $relocate_clobber_target -> $relocate_clobber_target.bak-" "relocate clobber backup path"
+assert_contains "$relocate_clobber_output" "Relocated alpha: $relocate_clobber_source -> $relocate_clobber_target" "relocate clobber move"
+assert_contains "$relocate_clobber_output" "Relocation complete: 1 moved, 0 skipped, 0 failed" "relocate clobber summary"
+assert_file_eq "$backup_path/blocker.txt" "blocker" "relocate clobber backup contents"
+assert_file_eq "$relocate_clobber_target/base.txt" "base" "relocate clobber moved worktree"
+assert_eq "alpha" "$(git -C "$relocate_clobber_target" branch --show-current)" "relocate clobber branch"
+
+relocate_skip_main="$run_root/relocate-skip-main"
+git -c init.defaultBranch=main init "$relocate_skip_main" >/dev/null
+git -C "$relocate_skip_main" symbolic-ref HEAD refs/heads/main
+git -C "$relocate_skip_main" config user.name "wt smoke"
+git -C "$relocate_skip_main" config user.email "wt-smoke@example.com"
+write_lines "$relocate_skip_main/base.txt" "base"
+git -C "$relocate_skip_main" add base.txt
+git -C "$relocate_skip_main" commit -m "base" >/dev/null
+write_lines "$relocate_skip_main/.wt.toml" 'strategy = "sibling-repo"'
+relocate_dirty_source="$run_root/relocate-skip-dirty-src"
+relocate_locked_source="$run_root/relocate-skip-locked-src"
+git -C "$relocate_skip_main" worktree add "$relocate_dirty_source" -b dirty >/dev/null 2>&1
+git -C "$relocate_skip_main" worktree add "$relocate_locked_source" -b locked >/dev/null 2>&1
+write_lines "$relocate_dirty_source/base.txt" "dirty"
+git -C "$relocate_skip_main" worktree lock --reason "smoke lock" "$relocate_locked_source" >/dev/null
+relocate_skip_output="$(run_wt "$relocate_skip_main" step relocate dirty locked)"
+assert_contains "$relocate_skip_output" "Skipped dirty: dirty worktree" "relocate dirty skip"
+assert_contains "$relocate_skip_output" "Skipped locked: locked worktree (smoke lock)" "relocate locked skip"
+assert_contains "$relocate_skip_output" "Relocation complete: 0 moved, 2 skipped, 0 failed" "relocate skip summary"
+assert_eq "dirty" "$(git -C "$relocate_dirty_source" branch --show-current)" "dirty branch stayed put"
+assert_eq "locked" "$(git -C "$relocate_locked_source" branch --show-current)" "locked branch stayed put"
 
 write_lines "$repo_dir/main.txt" "main-advance"
 git -C "$repo_dir" add main.txt
