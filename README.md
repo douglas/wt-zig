@@ -101,7 +101,7 @@ wt step push                        # fast-forward the target branch to the curr
 wt step promote [branch]            # swap a branch into the main worktree
 wt step eval [--dry-run] <template>  # render a template for each worktree
 wt step for-each -- <command> [args...]  # run a command for each worktree
-wt step relocate [--dry-run]        # move current worktree to its configured path
+wt step relocate [--dry-run]        # move mismatched worktrees to configured paths
 wt step prune --dry-run             # wrapper around cleanup for merged worktrees
 wt merge                           # merge current branch into default branch, then cleanup
 wt merge --no-remove               # keep source worktree after merging
@@ -112,7 +112,7 @@ wt merge --rebase --push           # opt into extra pipeline steps
 
 `wt step eval [--dry-run] <template>` renders a template for each worktree. `wt step for-each -- <command> [args...]` runs a command for each worktree, and template variables such as `{.branch}` and `{.repo.Name}` can be used in the forwarded command args.
 
-`wt step relocate [--dry-run] [--force]` moves the current worktree to the path produced by the active placement strategy. It uses the same planner as `wt migrate`, skips locked, dirty, detached, or already-correct worktrees, and `--force` only removes an existing target path before moving.
+`wt step relocate [--dry-run] [--clobber] [branches...]` moves attached worktrees to the paths produced by the active placement strategy. Without branches it relocates every mismatched worktree; branch arguments limit the operation to exact branch names. It skips locked, dirty, detached, branchless, or already-correct worktrees. `--clobber` backs up an existing non-worktree target path to `<path>.bak-<timestamp>` before moving; existing worktrees are never clobbered. `--force` and `-f` remain compatibility aliases for `--clobber`.
 
 `wt step promote [branch]` swaps a linked worktree branch into the main worktree and moves the previous main branch into the linked worktree. Without a branch, linked worktrees promote their current branch and the main worktree restores the default branch. Both worktrees must be clean and attached to local branches.
 

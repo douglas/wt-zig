@@ -253,7 +253,7 @@ pub const all = [_]Spec{
         .display = "step",
         .summary = "Run focused workflow steps",
         .usage = "wt step <commit|squash|rebase|push|promote|diff|copy-ignored|relocate|prune> ...",
-        .details = "Run workflow subcommands. `wt step commit`, `squash`, `rebase`, and `push` provide deterministic git-backed workflow primitives. `wt step promote` swaps a branch into the main worktree. `wt step diff` shows all changes since branching, including committed, staged, unstaged, and untracked files. `wt step copy-ignored` copies gitignored files and directories between worktrees, optionally constrained by `.worktreeinclude`. `wt step relocate` moves the current worktree to its configured path using the migrate planner.",
+        .details = "Run workflow subcommands. `wt step commit`, `squash`, `rebase`, and `push` provide deterministic git-backed workflow primitives. `wt step promote` swaps a branch into the main worktree. `wt step diff` shows all changes since branching, including committed, staged, unstaged, and untracked files. `wt step copy-ignored` copies gitignored files and directories between worktrees, optionally constrained by `.worktreeinclude`. `wt step relocate` moves mismatched worktrees to their configured paths.",
     },
     .{
         .kind = .ui,

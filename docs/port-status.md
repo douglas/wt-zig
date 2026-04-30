@@ -315,18 +315,19 @@ Commit: `2ee74d4`
 - Added root `--yes` for one-shot approval bypass, `WT_APPROVALS_DISABLED=1` for approval bypass, and `WT_HOOKS_DISABLED=1` for hook skipping.
 - Extended the fixture smoke workflow to approve repo-local commands before exercising aliases.
 
-### Phase 30: current-worktree relocate
+### Phase 30: multi-worktree relocate
 
-- Added `wt step relocate [--dry-run] [--force]`.
-- Reuses the existing `wt migrate` planner for target-path computation and move execution, but filters execution to the current worktree.
-- Skips locked, dirty, detached, already-correct, and blocked-target worktrees; `--force` only clobbers an existing non-worktree target path.
+- Added `wt step relocate [--dry-run] [--clobber] [branches...]`.
+- Relocates all mismatched attached worktrees by default, or exact branch filters when provided.
+- Skips locked, dirty, detached, branchless, already-correct, and blocked-target worktrees.
+- Resolves worktree swaps/cycles through temporary staging and backs up non-worktree blockers with `--clobber`; existing worktrees are never clobbered.
 
 ### Phase 31: branch promote
 
 - Added `wt step promote [branch]`.
 - Swaps a linked worktree branch into the main worktree and moves the previous main branch into the linked worktree.
 - Requires both worktrees to be clean and attached to local branches.
-- Defers Worktrunk's ignored-file staging/swap behavior to a future parity phase.
+- Swaps gitignored files and directories through recoverable staging so branch-local artifacts follow the branch.
 
 ## Verification Patterns
 

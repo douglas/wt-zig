@@ -16,8 +16,8 @@ Legend:
 | Git parsing helpers (`git/*.zig`) | Medium | Parsing and repo helper behavior are tested; command-level git-failure mappings are mostly validated via parity harness. |
 | Hook behavior (`hooks.zig`) | High | Hook env construction and pre/post/start failure handling are covered. |
 | Approval management for configured command strings | Medium | Unit coverage verifies project alias blocking plus approval persistence; smoke coverage exercises `wt config approvals add/show` before running repo-local aliases. Interactive prompt behavior is intentionally not implemented yet. |
-| Current-worktree relocation (`wt step relocate`) | Medium | Parser and skip-helper behavior are covered; move execution reuses the existing migrate planner/executor tests. |
-| Branch promotion (`wt step promote`) | Medium | Fixture smoke coverage verifies promote and restore branch swaps; ignored-file staging/swap parity remains deferred. |
+| Multi-worktree relocation (`wt step relocate`) | Medium | Parser coverage plus fixture smoke coverage verify branch-filtered dry-run and swap/cycle relocation with real git worktrees. Dirty/locked/clobber edge cases still lean on unit helpers and targeted manual validation. |
+| Branch promotion (`wt step promote`) | Medium | Fixture smoke coverage verifies promote/restore branch swaps and gitignored file/directory staging across both worktrees. |
 | Command argument parsing (`commands/*`) | Medium | Most commands cover parse helpers; some run-path validation branches remain untested. |
 | Completion command (`commands/completion.zig`) | Medium | Help and bash output covered; unknown-shell behavior (text/json) now covered; command catalogs now expose `hook`, `config alias`, and step template discoverability. |
 | Shellenv command (`commands/shellenv.zig`) | Medium | Generated shell blocks covered; JSON response path now covered; shell catalogs mirror `hook`, `config alias`, and step template discoverability. |
@@ -38,7 +38,7 @@ Legend:
 11. Fixture-based CLI smoke coverage for configured aliases, `wt step commit`, `wt step squash`, and `wt merge --rebase --no-remove`.
 12. Completion/shellenv command-catalog checks for `hook`, `config alias`, and `step eval` / `step for-each` discoverability.
 13. Approval-management behavior for configured alias and hook command strings, including saved approvals and fixture-smoke approval setup.
-14. `wt step relocate` parser and current-worktree skip behavior; full move execution is inherited from migrate planner coverage.
+14. `wt step relocate` parser coverage plus fixture-smoke branch-filter and swap/cycle relocation.
 15. `wt step promote` dirty-worktree refusal and ignored-file staging/swap parity.
 
 ## Next 5 High-Value Tests

@@ -6,6 +6,7 @@ const fs = @import("../fs.zig");
 const git_repo = @import("../git/repo.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
+const path_mod = @import("../path.zig");
 const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
 const template = @import("../template.zig");
@@ -36,7 +37,29 @@ const ParsedForEachArgs = struct {
 
 const ParsedRelocateArgs = struct {
     dry_run: bool = false,
-    force: bool = false,
+    clobber: bool = false,
+    branches: []const []const u8 = &.{},
+};
+
+const RelocateCandidate = struct {
+    entry: worktree.Entry,
+    target: []const u8,
+    primary: bool,
+};
+
+const RelocateTemp = struct {
+    index: usize,
+    temp_path: []const u8,
+    original_path: []const u8,
+};
+
+const RelocateResult = struct {
+    branch: []const u8,
+    from: []const u8,
+    to: ?[]const u8,
+    status: []const u8,
+    primary: bool,
+    reason: ?[]const u8 = null,
 };
 
 const StageMode = enum {
@@ -199,7 +222,7 @@ pub fn run(
         }
 
         const parsed = parseRelocateArgs(args[1..]) catch {
-            return output.usageError(ctx, stdout, stderr, "wt step relocate", "Usage: wt step relocate [--dry-run] [--force|-f]");
+            return output.usageError(ctx, stdout, stderr, "wt step relocate", "Usage: wt step relocate [--dry-run] [--clobber|--force|-f] [branches...]");
         };
 
         return relocate(ctx, cfg, parsed, stdout, stderr);
@@ -401,7 +424,7 @@ fn printHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
         \\  promote  Swap a branch into the main worktree
         \\  push  Fast-forward a target branch to the current branch
         \\  rebase  Rebase the current branch onto a target
-        \\  relocate  Move the current worktree to its configured path
+        \\  relocate  Move mismatched worktrees to configured paths
         \\  squash  Squash current branch changes into one commit
         \\
     );
@@ -521,14 +544,18 @@ fn printDiffHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
 
 fn printRelocateHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
     try output.commandHelp(ctx, stdout, "wt step relocate",
-        \\Move the current worktree to its configured path.
+        \\Move mismatched worktrees to their configured paths.
         \\
         \\Usage:
-        \\  wt step relocate [--dry-run] [--force|-f]
+        \\  wt step relocate [--dry-run] [--clobber|--force|-f] [branches...]
         \\
-        \\Uses the same target planner as `wt migrate`, but applies only to the
-        \\current worktree. `--force` removes an existing target file or
-        \\non-empty directory before moving.
+        \\Without branches, relocates every attached worktree whose path does
+        \\not match the active placement strategy. Branch arguments limit the
+        \\operation to exact branch names.
+        \\
+        \\`--dry-run` previews candidate moves. `--clobber` backs up an
+        \\existing non-worktree target path to <path>.bak-<timestamp> before
+        \\moving. Existing worktrees are never clobbered.
         \\
     );
 }
@@ -667,16 +694,26 @@ fn parseSingleTargetArgs(args: []const []const u8) !ParsedTargetArgs {
 
 fn parseRelocateArgs(args: []const []const u8) !ParsedRelocateArgs {
     var parsed = ParsedRelocateArgs{};
-    for (args) |arg| {
+    var index: usize = 0;
+    while (index < args.len) : (index += 1) {
+        const arg = args[index];
         if (std.mem.eql(u8, arg, "--dry-run")) {
             parsed.dry_run = true;
             continue;
         }
-        if (std.mem.eql(u8, arg, "--force") or std.mem.eql(u8, arg, "-f")) {
-            parsed.force = true;
+        if (std.mem.eql(u8, arg, "--clobber") or
+            std.mem.eql(u8, arg, "--force") or
+            std.mem.eql(u8, arg, "-f"))
+        {
+            parsed.clobber = true;
             continue;
         }
-        return error.InvalidArguments;
+        if (std.mem.startsWith(u8, arg, "-")) return error.InvalidArguments;
+        parsed.branches = args[index..];
+        for (parsed.branches) |branch| {
+            if (std.mem.startsWith(u8, branch, "-")) return error.InvalidArguments;
+        }
+        return parsed;
     }
     return parsed;
 }
@@ -828,37 +865,20 @@ fn relocate(
     };
     defer git_repo.freeRepoInfo(allocator, &info);
 
-    const current_path = repoRoot(allocator) catch {
-        try stderr.writeAll("failed to resolve current worktree\n");
-        return 1;
-    };
-    defer allocator.free(current_path);
+    const default_branch = git_repo.getDefaultBase(allocator) catch try allocator.dupe(u8, "main");
+    defer allocator.free(default_branch);
 
-    const current_entry = findWorktreeByPath(listed.entries, current_path) orelse {
-        try stderr.writeAll("current directory is not inside a git worktree\n");
-        return 1;
-    };
-
-    const plan = try migrate_support.buildPlan(allocator, cfg, info, listed.entries, &env_map, parsed.force);
-    defer migrate_support.freePlan(allocator, plan);
-
-    const planned_item = findPlanItemByPath(plan, current_entry.path) orelse {
-        try stderr.writeAll("current worktree was not included in relocation plan\n");
-        return 1;
-    };
-
-    const item = if (current_entry.locked != null)
-        lockedRelocateItem(planned_item)
-    else if (try isWorktreeDirty(allocator, current_entry.path))
-        dirtyRelocateItem(planned_item)
-    else
-        planned_item;
-
-    var selected = [_]migrate_support.PlanItem{item};
-    if (parsed.dry_run) {
-        return printRelocateDryRun(ctx, parsed.force, selected[0], stdout);
+    var candidates = try gatherRelocateCandidates(allocator, cfg, info, listed.entries, &env_map, parsed.branches, default_branch, stderr);
+    defer {
+        freeRelocateCandidates(allocator, candidates.items);
+        candidates.deinit(allocator);
     }
-    return migrate_support.applyPlanWithCommand(ctx, parsed.force, &selected, "wt step relocate", stdout, stderr);
+
+    if (parsed.dry_run) {
+        return printRelocateDryRun(ctx, parsed.clobber, candidates.items, stdout);
+    }
+
+    return executeRelocatePlan(ctx, parsed.clobber, info, listed.entries, candidates.items, stdout, stderr);
 }
 
 fn commit(
@@ -1579,43 +1599,479 @@ fn dirtyRelocateItem(item: migrate_support.PlanItem) migrate_support.PlanItem {
     return skipped;
 }
 
+fn gatherRelocateCandidates(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    repo: path_mod.RepoInfo,
+    entries: []const worktree.Entry,
+    env_map: *const std.process.EnvMap,
+    branch_filters: []const []const u8,
+    default_branch: []const u8,
+    stderr: *std.Io.Writer,
+) !std.ArrayList(RelocateCandidate) {
+    var candidates = std.ArrayList(RelocateCandidate).empty;
+    errdefer freeRelocateCandidates(allocator, candidates.items);
+    errdefer candidates.deinit(allocator);
+
+    for (entries, 0..) |entry, index| {
+        if (entry.prunable != null or entry.bare) continue;
+        const branch = entry.branch orelse continue;
+        if (entry.detached or std.mem.trim(u8, branch, " \t").len == 0) continue;
+        if (!branchFilterMatches(branch_filters, branch)) continue;
+        if (index == 0 and std.mem.eql(u8, branch, default_branch)) continue;
+
+        const target = path_mod.renderWorktreePath(allocator, cfg, repo, branch, env_map) catch |err| {
+            const safe = prompt.sanitizeForTerminal(allocator, branch) catch branch;
+            defer if (safe.ptr != branch.ptr) allocator.free(safe);
+            try stderr.print("Skipping {s}: failed to render target path ({s})\n", .{ safe, @errorName(err) });
+            continue;
+        };
+        errdefer allocator.free(target);
+
+        if (try pathsEquivalent(allocator, entry.path, target)) {
+            allocator.free(target);
+            continue;
+        }
+
+        try candidates.append(allocator, .{
+            .entry = entry,
+            .target = target,
+            .primary = index == 0,
+        });
+    }
+
+    return candidates;
+}
+
+fn freeRelocateCandidates(allocator: std.mem.Allocator, candidates: []const RelocateCandidate) void {
+    for (candidates) |candidate| allocator.free(candidate.target);
+}
+
+fn branchFilterMatches(filters: []const []const u8, branch: []const u8) bool {
+    if (filters.len == 0) return true;
+    for (filters) |filter| {
+        if (std.mem.eql(u8, filter, branch)) return true;
+    }
+    return false;
+}
+
+fn executeRelocatePlan(
+    ctx: output.Context,
+    clobber: bool,
+    repo: path_mod.RepoInfo,
+    all_entries: []const worktree.Entry,
+    candidates: []const RelocateCandidate,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const allocator = ctx.allocator;
+    var results = std.ArrayList(RelocateResult).empty;
+    defer results.deinit(allocator);
+
+    if (candidates.len == 0) {
+        if (output.isJson(ctx)) {
+            try emitRelocateResults(ctx, stdout, clobber, 0, 0, 0, results.items);
+        } else {
+            try stdout.writeAll("All worktrees are at expected paths.\n");
+        }
+        return 0;
+    }
+
+    var blocked = try allocator.alloc(bool, candidates.len);
+    defer allocator.free(blocked);
+    @memset(blocked, false);
+
+    var moved = try allocator.alloc(bool, candidates.len);
+    defer allocator.free(moved);
+    @memset(moved, false);
+
+    var relocated: usize = 0;
+    var skipped: usize = 0;
+    var failed: usize = 0;
+
+    for (candidates, 0..) |candidate, index| {
+        if (candidate.entry.locked) |reason| {
+            blocked[index] = true;
+            skipped += 1;
+            try appendRelocateResult(allocator, &results, candidate, "skipped", "locked worktree");
+            if (!output.isJson(ctx)) {
+                if (reason.len == 0) {
+                    try stdout.print("Skipped {s}: locked worktree\n", .{candidate.entry.branch.?});
+                } else {
+                    try stdout.print("Skipped {s}: locked worktree ({s})\n", .{ candidate.entry.branch.?, reason });
+                }
+            }
+            continue;
+        }
+        if (try isWorktreeDirty(allocator, candidate.entry.path)) {
+            blocked[index] = true;
+            skipped += 1;
+            try appendRelocateResult(allocator, &results, candidate, "skipped", "dirty worktree");
+            if (!output.isJson(ctx)) {
+                try stdout.print("Skipped {s}: dirty worktree\n", .{candidate.entry.branch.?});
+            }
+        }
+    }
+
+    for (candidates, 0..) |candidate, index| {
+        if (blocked[index]) continue;
+        if ((try existingPathKind(candidate.target)) == null) continue;
+        if (try candidateIndexAtPath(allocator, candidates, candidate.target)) |_| continue;
+
+        if (try worktreeAtPath(allocator, all_entries, candidate.target)) |occupant| {
+            blocked[index] = true;
+            skipped += 1;
+            const occupant_branch = occupant.branch orelse "detached";
+            try appendRelocateResult(allocator, &results, candidate, "skipped", "target is worktree");
+            if (!output.isJson(ctx)) {
+                try stdout.print("Skipped {s}: target is worktree for {s}\n", .{ candidate.entry.branch.?, occupant_branch });
+            }
+            continue;
+        }
+
+        if (!clobber) {
+            blocked[index] = true;
+            skipped += 1;
+            try appendRelocateResult(allocator, &results, candidate, "skipped", "target path exists");
+            if (!output.isJson(ctx)) {
+                try stdout.print("Skipped {s}: target path exists ({s})\n", .{ candidate.entry.branch.?, candidate.target });
+            }
+            continue;
+        }
+
+        const backup_path = backupRelocateTarget(allocator, candidate.target) catch |err| {
+            blocked[index] = true;
+            failed += 1;
+            try appendRelocateResult(allocator, &results, candidate, "failed", @errorName(err));
+            if (!output.isJson(ctx)) {
+                try stdout.print("Failed {s}: {s}\n", .{ candidate.entry.branch.?, @errorName(err) });
+            }
+            continue;
+        };
+        defer allocator.free(backup_path);
+        if (!output.isJson(ctx)) {
+            try stdout.print("Backed up {s} -> {s}\n", .{ candidate.target, backup_path });
+        }
+    }
+
+    var temps = std.ArrayList(RelocateTemp).empty;
+    defer {
+        for (temps.items) |temp| allocator.free(temp.temp_path);
+        temps.deinit(allocator);
+    }
+
+    while (true) {
+        var made_progress = false;
+        for (candidates, 0..) |candidate, index| {
+            if (moved[index] or blocked[index]) continue;
+
+            const target_state = try relocateTargetState(allocator, candidates, moved, candidate.target);
+            switch (target_state) {
+                .empty => {
+                    if (try moveRelocateCandidate(allocator, repo, candidate, stderr)) {
+                        moved[index] = true;
+                        relocated += 1;
+                        made_progress = true;
+                        try appendRelocateResult(allocator, &results, candidate, "moved", null);
+                        if (!output.isJson(ctx)) {
+                            try stdout.print("Relocated {s}: {s} -> {s}\n", .{ candidate.entry.branch.?, candidate.entry.path, candidate.target });
+                        }
+                    } else {
+                        blocked[index] = true;
+                        failed += 1;
+                        try appendRelocateResult(allocator, &results, candidate, "failed", "git command failed");
+                    }
+                },
+                .occupied_by_pending => {},
+                .blocked => {
+                    blocked[index] = true;
+                    skipped += 1;
+                    try appendRelocateResult(allocator, &results, candidate, "skipped", "target occupied");
+                    if (!output.isJson(ctx)) {
+                        try stdout.print("Skipped {s}: target occupied ({s})\n", .{ candidate.entry.branch.?, candidate.target });
+                    }
+                },
+            }
+        }
+
+        if (made_progress) continue;
+
+        const cycle_index = findCycleBreakCandidate(candidates, moved, blocked) orelse break;
+        const temp_path = try relocateTempPath(allocator, repo.main, candidates[cycle_index].entry.branch.?);
+        errdefer allocator.free(temp_path);
+
+        if (try moveLinkedWorktreePath(allocator, repo.main, candidates[cycle_index].entry.path, temp_path, stderr)) {
+            try temps.append(allocator, .{
+                .index = cycle_index,
+                .temp_path = temp_path,
+                .original_path = candidates[cycle_index].entry.path,
+            });
+            moved[cycle_index] = true;
+        } else {
+            allocator.free(temp_path);
+            blocked[cycle_index] = true;
+            failed += 1;
+            try appendRelocateResult(allocator, &results, candidates[cycle_index], "failed", "git command failed");
+        }
+    }
+
+    for (temps.items) |temp| {
+        const candidate = candidates[temp.index];
+        if (try moveLinkedWorktreePath(allocator, repo.main, temp.temp_path, candidate.target, stderr)) {
+            relocated += 1;
+            try appendRelocateResultWithFrom(allocator, &results, candidate, temp.original_path, "moved", null);
+            if (!output.isJson(ctx)) {
+                try stdout.print("Relocated {s}: {s} -> {s}\n", .{ candidate.entry.branch.?, temp.original_path, candidate.target });
+            }
+        } else {
+            failed += 1;
+            try appendRelocateResultWithFrom(allocator, &results, candidate, temp.original_path, "failed", "git command failed");
+        }
+    }
+
+    if (output.isJson(ctx)) {
+        try emitRelocateResults(ctx, stdout, clobber, relocated, skipped, failed, results.items);
+    } else {
+        try stdout.print("\nRelocation complete: {d} moved, {d} skipped, {d} failed\n", .{ relocated, skipped, failed });
+    }
+
+    return if (failed == 0) 0 else 1;
+}
+
+const RelocateTargetState = enum {
+    empty,
+    occupied_by_pending,
+    blocked,
+};
+
+fn relocateTargetState(
+    allocator: std.mem.Allocator,
+    candidates: []const RelocateCandidate,
+    moved: []const bool,
+    target: []const u8,
+) !RelocateTargetState {
+    if ((try existingPathKind(target)) == null) return .empty;
+    if (try candidateIndexAtPath(allocator, candidates, target)) |index| {
+        return if (moved[index]) .empty else .occupied_by_pending;
+    }
+    return .blocked;
+}
+
+fn findCycleBreakCandidate(
+    candidates: []const RelocateCandidate,
+    moved: []const bool,
+    blocked: []const bool,
+) ?usize {
+    for (candidates, 0..) |candidate, index| {
+        if (!moved[index] and !blocked[index] and !candidate.primary) return index;
+    }
+    return null;
+}
+
+fn moveRelocateCandidate(
+    allocator: std.mem.Allocator,
+    repo: path_mod.RepoInfo,
+    candidate: RelocateCandidate,
+    stderr: *std.Io.Writer,
+) !bool {
+    if (candidate.primary) {
+        return movePrimaryRelocateCandidate(allocator, candidate, stderr);
+    }
+    return moveLinkedWorktreePath(allocator, repo.main, candidate.entry.path, candidate.target, stderr);
+}
+
+fn movePrimaryRelocateCandidate(
+    allocator: std.mem.Allocator,
+    candidate: RelocateCandidate,
+    stderr: *std.Io.Writer,
+) !bool {
+    const branch = candidate.entry.branch.?;
+    const default_branch = git_repo.getDefaultBase(allocator) catch try allocator.dupe(u8, "main");
+    defer allocator.free(default_branch);
+
+    try fs.ensureParentDir(allocator, candidate.target);
+    if (!try gitQuiet(allocator, &.{ "git", "-C", candidate.entry.path, "checkout", default_branch }, stderr, "failed to switch main worktree to default branch")) {
+        return false;
+    }
+    if (try gitQuiet(allocator, &.{ "git", "-C", candidate.entry.path, "worktree", "add", candidate.target, branch }, stderr, "failed to create relocated main worktree")) {
+        return true;
+    }
+    _ = gitQuiet(allocator, &.{ "git", "-C", candidate.entry.path, "checkout", branch }, stderr, "failed to restore main worktree branch") catch false;
+    return false;
+}
+
+fn moveLinkedWorktreePath(
+    allocator: std.mem.Allocator,
+    repo_path: []const u8,
+    from: []const u8,
+    to: []const u8,
+    stderr: *std.Io.Writer,
+) !bool {
+    try fs.ensureParentDir(allocator, to);
+    return gitQuiet(allocator, &.{ "git", "-C", repo_path, "worktree", "move", from, to }, stderr, "failed to move worktree");
+}
+
+fn candidateIndexAtPath(
+    allocator: std.mem.Allocator,
+    candidates: []const RelocateCandidate,
+    path_value: []const u8,
+) !?usize {
+    for (candidates, 0..) |candidate, index| {
+        if (try pathsEquivalent(allocator, candidate.entry.path, path_value)) return index;
+    }
+    return null;
+}
+
+fn worktreeAtPath(
+    allocator: std.mem.Allocator,
+    entries: []const worktree.Entry,
+    path_value: []const u8,
+) !?worktree.Entry {
+    for (entries) |entry| {
+        if (try pathsEquivalent(allocator, entry.path, path_value)) return entry;
+    }
+    return null;
+}
+
+fn pathsEquivalent(allocator: std.mem.Allocator, lhs: []const u8, rhs: []const u8) !bool {
+    const resolved_lhs = try comparablePath(allocator, lhs);
+    defer allocator.free(resolved_lhs);
+    const resolved_rhs = try comparablePath(allocator, rhs);
+    defer allocator.free(resolved_rhs);
+    return std.mem.eql(u8, resolved_lhs, resolved_rhs);
+}
+
+fn comparablePath(allocator: std.mem.Allocator, path_value: []const u8) ![]u8 {
+    const absolute = try std.fs.path.resolve(allocator, &.{path_value});
+    errdefer allocator.free(absolute);
+    const real = std.fs.cwd().realpathAlloc(allocator, absolute) catch return absolute;
+    allocator.free(absolute);
+    return real;
+}
+
+fn backupRelocateTarget(allocator: std.mem.Allocator, target: []const u8) ![]const u8 {
+    const timestamp = std.time.timestamp();
+    var counter: usize = 0;
+    while (true) : (counter += 1) {
+        const backup = if (counter == 0)
+            try std.fmt.allocPrint(allocator, "{s}.bak-{d}", .{ target, timestamp })
+        else
+            try std.fmt.allocPrint(allocator, "{s}.bak-{d}-{d}", .{ target, timestamp, counter });
+        errdefer allocator.free(backup);
+        if ((try existingPathKind(backup)) == null) {
+            try std.fs.renameAbsolute(target, backup);
+            return backup;
+        }
+        allocator.free(backup);
+    }
+}
+
+fn relocateTempPath(allocator: std.mem.Allocator, repo_path: []const u8, branch: []const u8) ![]const u8 {
+    const common_dir = try promoteStagingDir(allocator, repo_path);
+    defer allocator.free(common_dir);
+    const parent = std.fs.path.dirname(common_dir) orelse return error.InvalidPath;
+
+    const safe_branch = try sanitizeFilename(allocator, branch);
+    defer allocator.free(safe_branch);
+
+    const timestamp = std.time.timestamp();
+    return std.fmt.allocPrint(allocator, "{s}/relocate-{s}-{d}", .{ parent, safe_branch, timestamp });
+}
+
+fn sanitizeFilename(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
+    var out = std.ArrayList(u8).empty;
+    errdefer out.deinit(allocator);
+    for (value) |ch| {
+        if (std.ascii.isAlphanumeric(ch) or ch == '-' or ch == '_' or ch == '.') {
+            try out.append(allocator, ch);
+        } else {
+            try out.append(allocator, '-');
+        }
+    }
+    if (out.items.len == 0) try out.append(allocator, 'x');
+    return out.toOwnedSlice(allocator);
+}
+
+fn appendRelocateResult(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayList(RelocateResult),
+    candidate: RelocateCandidate,
+    status: []const u8,
+    reason: ?[]const u8,
+) !void {
+    try appendRelocateResultWithFrom(allocator, results, candidate, candidate.entry.path, status, reason);
+}
+
+fn appendRelocateResultWithFrom(
+    allocator: std.mem.Allocator,
+    results: *std.ArrayList(RelocateResult),
+    candidate: RelocateCandidate,
+    from: []const u8,
+    status: []const u8,
+    reason: ?[]const u8,
+) !void {
+    try results.append(allocator, .{
+        .branch = candidate.entry.branch.?,
+        .from = from,
+        .to = candidate.target,
+        .status = status,
+        .primary = candidate.primary,
+        .reason = reason,
+    });
+}
+
+fn emitRelocateResults(
+    ctx: output.Context,
+    stdout: *std.Io.Writer,
+    clobber: bool,
+    relocated: usize,
+    skipped: usize,
+    failed: usize,
+    results: []const RelocateResult,
+) !void {
+    try output.emitSuccess(ctx, stdout, "wt step relocate", .{
+        .clobber = clobber,
+        .total = results.len,
+        .relocated = relocated,
+        .skipped = skipped,
+        .failed = failed,
+        .results = results,
+    });
+}
+
 fn printRelocateDryRun(
     ctx: output.Context,
-    force: bool,
-    item: migrate_support.PlanItem,
+    clobber: bool,
+    candidates: []const RelocateCandidate,
     stdout: *std.Io.Writer,
 ) !u8 {
     if (output.isJson(ctx)) {
-        const result = [_]struct {
-            branch: []const u8,
-            from: []const u8,
-            to: ?[]const u8,
-            action: []const u8,
-            primary: bool,
-            reason: ?[]const u8,
-        }{.{
-            .branch = item.branch,
-            .from = item.from,
-            .to = item.to,
-            .action = @tagName(item.action),
-            .primary = item.primary,
-            .reason = if (item.reason.len == 0) null else item.reason,
-        }};
+        var results = std.ArrayList(RelocateResult).empty;
+        defer results.deinit(ctx.allocator);
+        for (candidates) |candidate| {
+            try appendRelocateResult(ctx.allocator, &results, candidate, "planned", null);
+        }
         try output.emitSuccess(ctx, stdout, "wt step relocate", .{
             .dry_run = true,
-            .force = force,
-            .total = @as(usize, 1),
-            .results = result[0..],
+            .clobber = clobber,
+            .total = candidates.len,
+            .results = results.items,
         });
         return 0;
     }
 
-    const target = item.to orelse "(none)";
-    switch (item.action) {
-        .move, .move_force => try stdout.print("Would move {s}: {s} -> {s}\n", .{ item.branch, item.from, target }),
-        .skip => try stdout.print("Would skip {s}: {s}\n", .{ item.branch, item.reason }),
+    if (candidates.len == 0) {
+        try stdout.writeAll("All worktrees are at expected paths.\n");
+        return 0;
     }
-    try stdout.writeAll("\nRelocation dry run complete: 0 moved, 1 previewed\n");
+
+    try stdout.print("{d} worktree{s} would be relocated:\n", .{
+        candidates.len,
+        if (candidates.len == 1) "" else "s",
+    });
+    for (candidates) |candidate| {
+        try stdout.print("  {s}: {s} -> {s}\n", .{ candidate.entry.branch.?, candidate.entry.path, candidate.target });
+    }
     return 0;
 }
 
@@ -2365,11 +2821,17 @@ test "parseSingleTargetArgs accepts optional target" {
     try std.testing.expectError(error.InvalidArguments, parseSingleTargetArgs(&.{ "main", "next" }));
 }
 
-test "parseRelocateArgs accepts dry-run and force" {
-    const parsed = try parseRelocateArgs(&.{ "--dry-run", "-f" });
+test "parseRelocateArgs accepts dry-run clobber and branch filters" {
+    const parsed = try parseRelocateArgs(&.{ "--dry-run", "--clobber", "feature", "bugfix" });
     try std.testing.expect(parsed.dry_run);
-    try std.testing.expect(parsed.force);
-    try std.testing.expectError(error.InvalidArguments, parseRelocateArgs(&.{"branch"}));
+    try std.testing.expect(parsed.clobber);
+    try std.testing.expectEqual(2, parsed.branches.len);
+    try std.testing.expectEqualStrings("feature", parsed.branches[0]);
+
+    const compat = try parseRelocateArgs(&.{"-f"});
+    try std.testing.expect(compat.clobber);
+
+    try std.testing.expectError(error.InvalidArguments, parseRelocateArgs(&.{"--commit"}));
 }
 
 test "relocate skip item helpers preserve target" {

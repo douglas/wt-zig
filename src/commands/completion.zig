@@ -277,7 +277,7 @@ fn zshScript() []const u8 {
     \\                ;;
     \\            step)
     \\                local -a step_cmds
-    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'promote:Swap a branch into the main worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'relocate:Move current worktree to configured path' 'squash:Squash branch changes into one commit')
+    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'promote:Swap a branch into the main worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'relocate:Move mismatched worktrees to configured paths' 'squash:Squash branch changes into one commit')
     \\                _describe 'step command' step_cmds
     \\                ;;
     \\            merge)

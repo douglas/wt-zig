@@ -155,6 +155,28 @@ assert_file_eq "$promote_main/app.log" "main log" "promote restore main ignored 
 assert_file_eq "$promote_feature/build/feature-artifact" "feature build" "promote restore linked ignored directory"
 assert_file_eq "$promote_feature/debug.log" "feature log" "promote restore linked ignored file"
 
+relocate_main="$run_root/relocate-main"
+git -c init.defaultBranch=main init "$relocate_main" >/dev/null
+git -C "$relocate_main" symbolic-ref HEAD refs/heads/main
+git -C "$relocate_main" config user.name "wt smoke"
+git -C "$relocate_main" config user.email "wt-smoke@example.com"
+write_lines "$relocate_main/base.txt" "base"
+git -C "$relocate_main" add base.txt
+git -C "$relocate_main" commit -m "base" >/dev/null
+write_lines "$relocate_main/.wt.toml" 'strategy = "sibling-repo"'
+relocate_alpha="$run_root/relocate-main-alpha"
+relocate_beta="$run_root/relocate-main-beta"
+git -C "$relocate_main" worktree add "$relocate_beta" -b alpha >/dev/null 2>&1
+git -C "$relocate_main" worktree add "$relocate_alpha" -b beta >/dev/null 2>&1
+relocate_dry_run="$(run_wt "$relocate_main" step relocate --dry-run alpha)"
+assert_contains "$relocate_dry_run" "alpha:" "relocate dry-run branch filter"
+case "$relocate_dry_run" in
+    *"beta:"* ) fail "relocate dry-run branch filter included beta" ;;
+esac
+run_wt "$relocate_main" step relocate >/dev/null
+assert_eq "alpha" "$(git -C "$relocate_alpha" branch --show-current)" "relocate swap alpha"
+assert_eq "beta" "$(git -C "$relocate_beta" branch --show-current)" "relocate swap beta"
+
 write_lines "$repo_dir/main.txt" "main-advance"
 git -C "$repo_dir" add main.txt
 git -C "$repo_dir" commit -m "main advance" >/dev/null
