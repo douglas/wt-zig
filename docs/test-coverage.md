@@ -15,7 +15,7 @@ Legend:
 | Copy and filesystem safety (`copy_files.zig`, `cow_copy.zig`, `trash.zig`) | High | Traversal/symlink guards, strategy fallthrough, and copy behavior are covered. |
 | Git parsing helpers (`git/*.zig`) | Medium | Parsing and repo helper behavior are tested; command-level git-failure mappings are mostly validated via parity harness. |
 | Hook behavior (`hooks.zig`) | High | Hook env construction and pre/post/start failure handling are covered. |
-| Approval management for configured command strings | Medium | Unit coverage verifies project alias blocking plus approval persistence; smoke coverage exercises `wt config approvals add/show` before running repo-local aliases. Interactive prompt behavior is intentionally not implemented yet. |
+| Approval management for configured command strings | Medium | Unit coverage verifies project alias blocking, project-scoped approval parsing, and approval persistence; smoke coverage exercises `wt hook show` unapproved markers plus `wt config approvals add/show` before running repo-local aliases. TTY prompt behavior is implemented but still best covered manually. |
 | Multi-worktree relocation (`wt step relocate`) | Medium | Parser coverage plus fixture smoke coverage verify branch-filtered dry-run and swap/cycle relocation with real git worktrees. Dirty/locked/clobber edge cases still lean on unit helpers and targeted manual validation. |
 | Branch promotion (`wt step promote`) | Medium | Fixture smoke coverage verifies promote/restore branch swaps and gitignored file/directory staging across both worktrees. |
 | Command argument parsing (`commands/*`) | Medium | Most commands cover parse helpers; some run-path validation branches remain untested. |

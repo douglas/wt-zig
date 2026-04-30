@@ -313,6 +313,8 @@ Commit: `2ee74d4`
 - Added `wt config approvals show|add|clear` for repo-local `.wt.toml` alias and hook command approvals.
 - Project-config aliases and hooks now require approval before execution; user config commands remain trusted.
 - Added root `--yes` for one-shot approval bypass, `WT_APPROVALS_DISABLED=1` for approval bypass, and `WT_HOOKS_DISABLED=1` for hook skipping.
+- Approval state is scoped by project in `approvals.toml`, and unapproved project hooks are marked in `wt hook show`.
+- Missing approvals can be accepted and saved through an interactive TTY prompt; non-interactive runs fail closed with guidance.
 - Extended the fixture smoke workflow to approve repo-local commands before exercising aliases.
 
 ### Phase 30: multi-worktree relocate

@@ -1,4 +1,5 @@
 const std = @import("std");
+const approvals = @import("../approvals.zig");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
@@ -45,7 +46,18 @@ pub fn run(
                 },
             });
         } else {
-            try printHookGroup(args[1], command_list, stdout, ctx.allocator);
+            var approval_state = approvals.load(ctx.allocator, cfg) catch null;
+            defer if (approval_state) |*state| state.deinit(ctx.allocator);
+            var project_config = if (cfg.config_repo_found)
+                config.parseFile(ctx.allocator, cfg.config_repo_path) catch null
+            else
+                null;
+            defer if (project_config) |*parsed| parsed.deinit(ctx.allocator);
+            const project_commands = if (project_config) |parsed|
+                findHookInValue(parsed.hooks, args[1]) orelse &.{}
+            else
+                &.{};
+            try printHookGroup(args[1], command_list, project_commands, if (approval_state) |*state| state.commands else &.{}, stdout, ctx.allocator);
         }
         return 0;
     }
@@ -55,7 +67,14 @@ pub fn run(
             .hooks = cfg.hooks,
         });
     } else {
-        try printHooks(cfg, stdout, ctx.allocator);
+        var approval_state = approvals.load(ctx.allocator, cfg) catch null;
+        defer if (approval_state) |*state| state.deinit(ctx.allocator);
+        var project_config = if (cfg.config_repo_found)
+            config.parseFile(ctx.allocator, cfg.config_repo_path) catch null
+        else
+            null;
+        defer if (project_config) |*parsed| parsed.deinit(ctx.allocator);
+        try printHooks(cfg, if (project_config) |*parsed| parsed.hooks else null, if (approval_state) |*state| state.commands else &.{}, stdout, ctx.allocator);
     }
     return 0;
 }
@@ -74,7 +93,13 @@ pub fn printHelp(writer: *std.Io.Writer) !void {
     );
 }
 
-fn printHooks(cfg: *const config.Resolved, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+fn printHooks(
+    cfg: *const config.Resolved,
+    project_hooks: ?config.Hooks,
+    approved_commands: []const []const u8,
+    writer: *std.Io.Writer,
+    allocator: std.mem.Allocator,
+) !void {
     if (!hasHooks(cfg.hooks)) {
         try writer.writeAll("Hooks:  (none configured)\n\n");
         return;
@@ -82,12 +107,23 @@ fn printHooks(cfg: *const config.Resolved, writer: *std.Io.Writer, allocator: st
 
     try writer.writeAll("Hooks:\n");
     inline for (comptime std.meta.fields(@TypeOf(cfg.hooks))) |field| {
-        try printHookField(field.name, @field(cfg.hooks, field.name), writer, allocator);
+        const project_commands = if (project_hooks) |hooks_value|
+            @field(hooks_value, field.name)
+        else
+            &.{};
+        try printHookField(field.name, @field(cfg.hooks, field.name), project_commands, approved_commands, writer, allocator);
     }
     try writer.writeByte('\n');
 }
 
-fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+fn printHookGroup(
+    name: []const u8,
+    commands: []const []const u8,
+    project_commands: []const []const u8,
+    approved_commands: []const []const u8,
+    writer: *std.Io.Writer,
+    allocator: std.mem.Allocator,
+) !void {
     if (commands.len == 0) {
         try writer.print("  {s}: (no commands)\n", .{name});
         return;
@@ -96,22 +132,45 @@ fn printHookGroup(name: []const u8, commands: []const []const u8, writer: *std.I
     for (commands) |command| {
         const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
         defer if (safe.ptr != command.ptr) allocator.free(safe);
-        try writer.print("  {s}: {s}\n", .{ name, safe });
+        const suffix = if (containsCommand(project_commands, command) and
+            !containsCommand(approved_commands, command))
+            " (requires approval)"
+        else
+            "";
+        try writer.print("  {s}: {s}{s}\n", .{ name, safe, suffix });
     }
 }
 
-fn printHookField(name: []const u8, commands: []const []const u8, writer: *std.Io.Writer, allocator: std.mem.Allocator) !void {
+fn printHookField(
+    name: []const u8,
+    commands: []const []const u8,
+    project_commands: []const []const u8,
+    approved_commands: []const []const u8,
+    writer: *std.Io.Writer,
+    allocator: std.mem.Allocator,
+) !void {
     if (commands.len == 0) return;
-    try printHookGroup(name, commands, writer, allocator);
+    try printHookGroup(name, commands, project_commands, approved_commands, writer, allocator);
 }
 
 fn findHook(cfg: *const config.Resolved, name: []const u8) ?[]const []const u8 {
-    inline for (comptime std.meta.fields(@TypeOf(cfg.hooks))) |field| {
+    return findHookInValue(cfg.hooks, name);
+}
+
+fn findHookInValue(hooks_value: config.Hooks, name: []const u8) ?[]const []const u8 {
+    inline for (comptime std.meta.fields(@TypeOf(hooks_value))) |field| {
         if (std.mem.eql(u8, name, field.name)) {
-            return @field(cfg.hooks, field.name);
+            return @field(hooks_value, field.name);
         }
     }
     return null;
+}
+
+fn containsCommand(commands: []const []const u8, command: []const u8) bool {
+    for (commands) |candidate| {
+        if (std.mem.eql(u8, candidate, command)) return true;
+    }
+    return false;
 }
 
 fn hasHooks(hooks_value: config.Hooks) bool {

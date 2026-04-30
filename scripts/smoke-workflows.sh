@@ -96,7 +96,9 @@ write_lines "$config_file" \
     "[hooks]" \
     "pre_start = [\"echo pre start\"]"
 
+assert_contains "$(run_wt "$repo_dir" hook show)" "(requires approval)" "hook catalog marks unapproved project command"
 run_wt "$repo_dir" config approvals add >/dev/null
+assert_contains "$(<"$run_root/approvals.toml")" "[projects.\"repo\"]" "approvals are project scoped"
 assert_contains "$(run_wt "$repo_dir" config approvals show)" "printf '%s\\n' alias" "approvals include alias command"
 
 alias_output="$(run_wt "$repo_dir" echo one two)"

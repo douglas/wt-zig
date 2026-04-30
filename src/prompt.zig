@@ -147,7 +147,7 @@ fn readLineRaw(allocator: std.mem.Allocator, file: std.fs.File) ![]u8 {
                     try stderr.writeAll("\x08 \x08");
                 }
             },
-            '0'...'9' => {
+            32...126 => {
                 try bytes.append(allocator, byte[0]);
                 try stderr.writeAll(&byte);
             },

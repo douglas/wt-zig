@@ -148,7 +148,7 @@ wt hook show
 Config aliases can define custom commands. Single-string aliases run one shell command; array aliases run commands serially, and extra CLI args are appended to the last command.
 `wt config alias show` surfaces the resolved alias catalog, `wt config alias dry-run <name> [-- <args>...]` previews the exact shell commands without executing them, and `wt hook show` displays the configured hook commands.
 
-Treat repo-local `[aliases]` and `[hooks]` entries as shell command strings that must be reviewed before execution. `wt config approvals add` approves the current repo's `.wt.toml` alias and hook commands, `wt config approvals show` lists approved commands, and `wt config approvals clear` removes saved approvals. Use root `--yes` to bypass approval once without saving it, `WT_APPROVALS_DISABLED=1` to bypass approval checks, and `WT_HOOKS_DISABLED=1` to skip hook execution entirely.
+Treat repo-local `[aliases]` and `[hooks]` entries as shell command strings that must be reviewed before execution. `wt config approvals add` approves the current repo's `.wt.toml` alias and hook commands, `wt config approvals show` lists approved commands for the current project, and `wt config approvals clear` removes this project's saved approvals. Approval state is stored per project in `approvals.toml` next to the user config. Missing approvals prompt interactively when a TTY is available. Use root `--yes` to bypass approval once without saving it, `WT_APPROVALS_DISABLED=1` to bypass approval checks, and `WT_HOOKS_DISABLED=1` to skip hook execution entirely.
 
 ```toml
 [aliases]

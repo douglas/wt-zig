@@ -139,12 +139,14 @@ fn runApprovals(
         if (output.isJson(ctx)) {
             try output.emitSuccess(ctx, stdout, "wt config approvals add", .{
                 .path = result.path,
+                .project = result.project_id,
                 .added = result.added,
                 .total = result.total,
             });
         } else if (cfg.config_repo_found) {
-            try stdout.print("Approved {d} new project command(s); {d} total in {s}\n", .{
+            try stdout.print("Approved {d} new project command(s) for {s}; {d} total in {s}\n", .{
                 result.added,
+                result.project_id,
                 result.total,
                 result.path,
             });
@@ -164,10 +166,11 @@ fn runApprovals(
         if (output.isJson(ctx)) {
             try output.emitSuccess(ctx, stdout, "wt config approvals show", .{
                 .path = state.path,
+                .project = state.project_id,
                 .commands = state.commands,
             });
         } else {
-            try printApprovedCommands(state.path, state.commands, stdout, ctx.allocator);
+            try printApprovedCommands(state.path, state.project_id, state.commands, stdout, ctx.allocator);
         }
         return 0;
     }
@@ -469,11 +472,13 @@ fn printCommands(commands: []const []const u8, writer: *std.Io.Writer, allocator
 
 fn printApprovedCommands(
     approvals_path: []const u8,
+    project_id: []const u8,
     commands: []const []const u8,
     writer: *std.Io.Writer,
     allocator: std.mem.Allocator,
 ) !void {
     try writer.print("Approvals file: {s}\n", .{approvals_path});
+    try writer.print("Project: {s}\n", .{project_id});
     if (commands.len == 0) {
         try writer.writeAll("Approved commands: (none)\n");
         return;
