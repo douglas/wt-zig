@@ -158,8 +158,8 @@ pub fn checkoutBranch(
                 var existing_hook_env = try hooks.buildHookEnv(allocator, info, branch, existing_path);
                 defer existing_hook_env.deinit();
 
-                try hooks.runHooks(allocator, pre_hook, hooks.getHooks(cfg, pre_hook), &existing_hook_env, stderr);
-                hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &existing_hook_env, stderr) catch {};
+                try hooks.runApprovedHooks(allocator, cfg, pre_hook, hooks.getHooks(cfg, pre_hook), &existing_hook_env, stderr);
+                hooks.runApprovedHooks(allocator, cfg, post_hook, hooks.getHooks(cfg, post_hook), &existing_hook_env, stderr) catch {};
 
                 return .{
                     .path = existing_path,
@@ -186,7 +186,7 @@ pub fn checkoutBranch(
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
     defer hook_env.deinit();
 
-    try hooks.runHooks(allocator, pre_hook, hooks.getHooks(cfg, pre_hook), &hook_env, stderr);
+    try hooks.runApprovedHooks(allocator, cfg, pre_hook, hooks.getHooks(cfg, pre_hook), &hook_env, stderr);
 
     const success = try runGitWorktreeAdd(allocator, target_path, &.{branch}, stderr);
     if (!success) return error.GitCommandFailed;
@@ -199,7 +199,7 @@ pub fn checkoutBranch(
         if (std.Thread.spawn(.{}, cow_copy.warmDiskCache, .{target_path})) |t| t.detach() else |_| {}
     }
 
-    hooks.runHooks(allocator, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
+    hooks.runApprovedHooks(allocator, cfg, post_hook, hooks.getHooks(cfg, post_hook), &hook_env, stderr) catch {};
 
     hooks.runStartHooks(allocator, cfg, info, branch, target_path, stderr) catch |err| switch (err) {
         error.HookCommandFailed => return error.StartHookFailed,

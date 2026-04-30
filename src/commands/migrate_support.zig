@@ -143,6 +143,17 @@ pub fn applyPlan(
     stdout: *std.Io.Writer,
     stderr: *std.Io.Writer,
 ) !u8 {
+    return applyPlanWithCommand(ctx, force, plan, "wt migrate", stdout, stderr);
+}
+
+pub fn applyPlanWithCommand(
+    ctx: output.Context,
+    force: bool,
+    plan: []PlanItem,
+    command_name: []const u8,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
     const allocator = ctx.allocator;
     var results = std.ArrayList(ResultItem).empty;
     defer results.deinit(allocator);
@@ -245,7 +256,7 @@ pub fn applyPlan(
     }
 
     if (output.isJson(ctx)) {
-        try output.emitSuccess(ctx, stdout, "wt migrate", .{
+        try output.emitSuccess(ctx, stdout, command_name, .{
             .force = force,
             .total = plan.len,
             .migrated = moved,

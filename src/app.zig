@@ -1,4 +1,5 @@
 const std = @import("std");
+const approvals = @import("approvals.zig");
 const aliases = @import("aliases.zig");
 const command = @import("command.zig");
 const config = @import("config.zig");
@@ -54,6 +55,7 @@ pub fn run(
 
     var loaded_config = try config.load(allocator, .{ .cli_config_path = parsed.cli_config_path });
     defer loaded_config.deinit();
+    loaded_config.resolved.approvals_bypass = parsed.approvals_bypass;
 
     if (parsed.root_help or args.len == 0 or isHelpFlag(args[0])) {
         try help_cmd.printRoot(ctx, &loaded_config.resolved, stdout);
@@ -66,6 +68,10 @@ pub fn run(
 
     const spec = command.find(args[0]) orelse {
         if (aliases.find(&loaded_config.resolved, args[0])) |alias_commands| {
+            approvals.ensureAliasApproved(allocator, &loaded_config.resolved, args[0], stderr) catch |err| switch (err) {
+                error.CommandApprovalRequired => return 1,
+                else => return err,
+            };
             return aliases.run(allocator, args[0], alias_commands, args[1..], stderr);
         }
 
@@ -121,6 +127,7 @@ const ParsedRootArgs = struct {
     output_format: output.Format,
     positional: []const []const u8,
     root_help: bool,
+    approvals_bypass: bool,
 
     pub fn deinit(self: *ParsedRootArgs, allocator: std.mem.Allocator) void {
         allocator.free(self.positional);
@@ -131,6 +138,7 @@ fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !Parsed
     var cli_config_path: ?[]const u8 = null;
     var output_format: output.Format = .text;
     const root_help = false;
+    var approvals_bypass = false;
     var positional: std.ArrayList([]const u8) = .empty;
     errdefer positional.deinit(allocator);
 
@@ -140,6 +148,11 @@ fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !Parsed
 
         if (std.mem.eql(u8, arg, "-h") or std.mem.eql(u8, arg, "--help")) {
             try positional.append(allocator, arg);
+            continue;
+        }
+
+        if (std.mem.eql(u8, arg, "-y") or std.mem.eql(u8, arg, "--yes")) {
+            approvals_bypass = true;
             continue;
         }
 
@@ -175,6 +188,7 @@ fn parseRootArgs(allocator: std.mem.Allocator, args: []const []const u8) !Parsed
         .output_format = output_format,
         .positional = try positional.toOwnedSlice(allocator),
         .root_help = root_help,
+        .approvals_bypass = approvals_bypass,
     };
 }
 

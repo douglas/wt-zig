@@ -67,8 +67,11 @@ wt --format json version
 - Per-repo override: `.wt.toml` in repo root
 - Hook blocks support pre/post create/checkout/start/remove/pr/mr with `WT_*` env variables.
 - `[aliases]` entries define custom wt commands; repo aliases override global aliases, and extra CLI args are appended to the last command.
-- `wt config alias show` surfaces the alias catalog, `wt config alias dry-run <name> [-- <args>...]` previews alias commands, and `wt hook show` displays configured hooks.
+- Repo-local `.wt.toml` aliases and hooks require command approval before execution. Use `wt config approvals add` to approve current repo commands, `wt config approvals show` to inspect saved approvals, and `wt config approvals clear` to reset them.
+- Root `--yes` bypasses approval once without saving it, `WT_APPROVALS_DISABLED=1` bypasses approval checks, and `WT_HOOKS_DISABLED=1` skips hooks entirely.
 - `wt step eval [--dry-run] <template>` uses the same `{.branch}`-style template variables as worktree paths, and `wt step for-each -- <command> [args...]` can embed those variables in forwarded command args.
+- `wt step relocate [--dry-run] [--force]` moves the current worktree to its configured path using the migrate planner; it skips locked, dirty, detached, and already-correct worktrees.
+- `wt step promote [branch]` swaps a branch into the main worktree and requires both involved worktrees to be clean and attached to local branches.
 - `[step.copy-ignored] exclude = [...]` skips ignored copy candidates with gitignore-like patterns; use `!pattern` entries for exceptions.
 - `wt merge` defaults stay compatible: merge into the default base and clean up the source worktree. Pipeline steps are opt-in through flags like `--rebase`, `--squash`, and `--push`.
 

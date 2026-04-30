@@ -17,6 +17,8 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `ui`
 - `step eval`
 - `step for-each`
+- `step relocate`
+- `step promote`
 - `prune`
 - `cleanup`
 - `migrate`
@@ -29,6 +31,7 @@ The port is intentionally incremental, not a line-by-line Cobra rewrite. The cur
 - `hook`
 - configured `[aliases]`
 - `config alias` discoverability
+- project command approvals
 
 ## Port Complete
 
@@ -304,6 +307,26 @@ Commit: `2ee74d4`
 
 - Added `step eval` and `step for-each` to shell completion catalogs.
 - Documented `wt step eval [--dry-run] <template>` and `wt step for-each -- <command> [args...]`, including template variables in `for-each` command args.
+
+### Phase 29: project command approvals
+
+- Added `wt config approvals show|add|clear` for repo-local `.wt.toml` alias and hook command approvals.
+- Project-config aliases and hooks now require approval before execution; user config commands remain trusted.
+- Added root `--yes` for one-shot approval bypass, `WT_APPROVALS_DISABLED=1` for approval bypass, and `WT_HOOKS_DISABLED=1` for hook skipping.
+- Extended the fixture smoke workflow to approve repo-local commands before exercising aliases.
+
+### Phase 30: current-worktree relocate
+
+- Added `wt step relocate [--dry-run] [--force]`.
+- Reuses the existing `wt migrate` planner for target-path computation and move execution, but filters execution to the current worktree.
+- Skips locked, dirty, detached, already-correct, and blocked-target worktrees; `--force` only clobbers an existing non-worktree target path.
+
+### Phase 31: branch promote
+
+- Added `wt step promote [branch]`.
+- Swaps a linked worktree branch into the main worktree and moves the previous main branch into the linked worktree.
+- Requires both worktrees to be clean and attached to local branches.
+- Defers Worktrunk's ignored-file staging/swap behavior to a future parity phase.
 
 ## Verification Patterns
 

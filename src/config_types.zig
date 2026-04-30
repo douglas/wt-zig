@@ -68,6 +68,7 @@ pub const Resolved = struct {
     config_file_found: bool,
     config_repo_path: []const u8 = "",
     config_repo_found: bool = false,
+    approvals_bypass: bool = false,
     sources: Sources,
 };
 
@@ -96,6 +97,7 @@ pub const testing_defaults = Resolved{
     .config_file_found = false,
     .config_repo_path = "",
     .config_repo_found = false,
+    .approvals_bypass = false,
     .sources = .{
         .root = "default",
         .strategy = "default",

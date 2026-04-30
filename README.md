@@ -98,8 +98,10 @@ wt step commit -m "ship it"         # stage and commit with an explicit message
 wt step squash -m "one commit"      # squash branch changes since the default base
 wt step rebase                      # rebase current branch onto the default base
 wt step push                        # fast-forward the target branch to the current branch
+wt step promote [branch]            # swap a branch into the main worktree
 wt step eval [--dry-run] <template>  # render a template for each worktree
 wt step for-each -- <command> [args...]  # run a command for each worktree
+wt step relocate [--dry-run]        # move current worktree to its configured path
 wt step prune --dry-run             # wrapper around cleanup for merged worktrees
 wt merge                           # merge current branch into default branch, then cleanup
 wt merge --no-remove               # keep source worktree after merging
@@ -109,6 +111,10 @@ wt merge --rebase --push           # opt into extra pipeline steps
 `wt step copy-ignored` copies ignored files and directories from another worktree. Without flags it copies from the main worktree into the current worktree, skips existing destination entries, and uses copy-on-write when the filesystem supports it. Add `.worktreeinclude` to copy only matching ignored paths, for example `.env`, `node_modules/`, or `target/`. Configure `[step.copy-ignored] exclude = ["cache/", "*.sqlite", "!cache/keep.sqlite"]` to skip noisy ignored paths while allowing negated exceptions.
 
 `wt step eval [--dry-run] <template>` renders a template for each worktree. `wt step for-each -- <command> [args...]` runs a command for each worktree, and template variables such as `{.branch}` and `{.repo.Name}` can be used in the forwarded command args.
+
+`wt step relocate [--dry-run] [--force]` moves the current worktree to the path produced by the active placement strategy. It uses the same planner as `wt migrate`, skips locked, dirty, detached, or already-correct worktrees, and `--force` only removes an existing target path before moving.
+
+`wt step promote [branch]` swaps a linked worktree branch into the main worktree and moves the previous main branch into the linked worktree. Without a branch, linked worktrees promote their current branch and the main worktree restores the default branch. Both worktrees must be clean and attached to local branches.
 
 `wt merge` keeps compatible defaults: it merges the current branch into the default base and removes the source worktree after success. Pipeline steps such as `--rebase`, `--squash`, `--push`, `--no-ff`, `--no-hooks`, and `--message` are opt-in flags, not default behavior.
 
@@ -141,6 +147,8 @@ wt hook show
 
 Config aliases can define custom commands. Single-string aliases run one shell command; array aliases run commands serially, and extra CLI args are appended to the last command.
 `wt config alias show` surfaces the resolved alias catalog, `wt config alias dry-run <name> [-- <args>...]` previews the exact shell commands without executing them, and `wt hook show` displays the configured hook commands.
+
+Treat repo-local `[aliases]` and `[hooks]` entries as shell command strings that must be reviewed before execution. `wt config approvals add` approves the current repo's `.wt.toml` alias and hook commands, `wt config approvals show` lists approved commands, and `wt config approvals clear` removes saved approvals. Use root `--yes` to bypass approval once without saving it, `WT_APPROVALS_DISABLED=1` to bypass approval checks, and `WT_HOOKS_DISABLED=1` to skip hook execution entirely.
 
 ```toml
 [aliases]

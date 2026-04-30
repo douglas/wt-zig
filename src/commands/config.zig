@@ -1,4 +1,5 @@
 const std = @import("std");
+const approvals = @import("../approvals.zig");
 const config = @import("../config.zig");
 const hooks = @import("../hooks.zig");
 const output = @import("../output.zig");
@@ -13,6 +14,10 @@ pub fn run(ctx: output.Context, args: []const []const u8, cfg: *const config.Res
 
     if (std.mem.eql(u8, args[0], "alias")) {
         return runAlias(ctx, args[1..], cfg, stdout, stderr);
+    }
+
+    if (std.mem.eql(u8, args[0], "approvals")) {
+        return runApprovals(ctx, args[1..], cfg, stdout, stderr);
     }
 
     if (std.mem.eql(u8, args[0], "show")) {
@@ -112,6 +117,87 @@ fn runAlias(
     return 1;
 }
 
+fn runApprovals(
+    ctx: output.Context,
+    args: []const []const u8,
+    cfg: *const config.Resolved,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    if (args.len == 0) {
+        try printApprovalsHelp(stdout);
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "add")) {
+        if (args.len != 1 and !(args.len == 2 and std.mem.eql(u8, args[1], "--all"))) {
+            return output.usageError(ctx, stdout, stderr, "wt config approvals add", "Usage: wt config approvals add [--all]");
+        }
+
+        var result = try approvals.approveProjectCommands(ctx.allocator, cfg);
+        defer result.deinit(ctx.allocator);
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config approvals add", .{
+                .path = result.path,
+                .added = result.added,
+                .total = result.total,
+            });
+        } else if (cfg.config_repo_found) {
+            try stdout.print("Approved {d} new project command(s); {d} total in {s}\n", .{
+                result.added,
+                result.total,
+                result.path,
+            });
+        } else {
+            try stdout.print("No project config found; approvals file: {s}\n", .{result.path});
+        }
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "show")) {
+        if (args.len != 1) {
+            return output.usageError(ctx, stdout, stderr, "wt config approvals show", "Usage: wt config approvals show");
+        }
+
+        var state = try approvals.load(ctx.allocator, cfg);
+        defer state.deinit(ctx.allocator);
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config approvals show", .{
+                .path = state.path,
+                .commands = state.commands,
+            });
+        } else {
+            try printApprovedCommands(state.path, state.commands, stdout, ctx.allocator);
+        }
+        return 0;
+    }
+
+    if (std.mem.eql(u8, args[0], "clear")) {
+        if (args.len != 1) {
+            return output.usageError(ctx, stdout, stderr, "wt config approvals clear", "Usage: wt config approvals clear");
+        }
+
+        const path_value = try approvals.clear(ctx.allocator, cfg);
+        defer ctx.allocator.free(path_value);
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt config approvals clear", .{ .path = path_value });
+        } else {
+            try stdout.print("Cleared approvals: {s}\n", .{path_value});
+        }
+        return 0;
+    }
+
+    if (output.isJson(ctx)) {
+        const message = try std.fmt.allocPrint(ctx.allocator, "Unknown config approvals command: {s}", .{args[0]});
+        defer ctx.allocator.free(message);
+        try output.emitError(ctx, stdout, "wt config approvals", message);
+    } else {
+        try stderr.print("Unknown config approvals command: {s}\n\n", .{args[0]});
+        try printApprovalsHelp(stderr);
+    }
+    return 1;
+}
+
 fn runAliasShow(
     ctx: output.Context,
     args: []const []const u8,
@@ -207,6 +293,12 @@ pub fn printHelp(writer: *std.Io.Writer) !void {
         \\  wt config <command>
         \\
         \\Commands:
+        \\  approvals add
+        \\      Approve all project-config hook and alias commands for this repository
+        \\  approvals clear
+        \\      Clear saved project-command approvals
+        \\  approvals show
+        \\      Print saved project-command approvals
         \\  alias dry-run <name> [-- <args>...]
         \\      Show the exact shell commands that would run for an alias without executing them
         \\  alias show [name]
@@ -239,6 +331,27 @@ fn printAliasHelp(writer: *std.Io.Writer) !void {
         \\      Show the shell commands that would run without executing them
         \\  show [name]
         \\      Print all configured aliases or a single alias
+        \\
+    );
+}
+
+fn printApprovalsHelp(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        \\Manage project command approvals.
+        \\
+        \\Usage:
+        \\  wt config approvals <command>
+        \\
+        \\Commands:
+        \\  add [--all]
+        \\      Approve all project-config hook and alias commands for this repository
+        \\  clear
+        \\      Clear saved approvals
+        \\  show
+        \\      Print saved approvals
+        \\
+        \\Project-config hooks and aliases are blocked until approved. User config commands
+        \\are trusted. Use global --yes to bypass approval once without saving it.
         \\
     );
 }
@@ -351,6 +464,26 @@ fn printCommands(commands: []const []const u8, writer: *std.Io.Writer, allocator
         const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
         defer if (safe.ptr != command.ptr) allocator.free(safe);
         try writer.print("{s}\n", .{safe});
+    }
+}
+
+fn printApprovedCommands(
+    approvals_path: []const u8,
+    commands: []const []const u8,
+    writer: *std.Io.Writer,
+    allocator: std.mem.Allocator,
+) !void {
+    try writer.print("Approvals file: {s}\n", .{approvals_path});
+    if (commands.len == 0) {
+        try writer.writeAll("Approved commands: (none)\n");
+        return;
+    }
+
+    try writer.writeAll("Approved commands:\n");
+    for (commands) |command| {
+        const safe = prompt.sanitizeForTerminal(allocator, command) catch command;
+        defer if (safe.ptr != command.ptr) allocator.free(safe);
+        try writer.print("  {s}\n", .{safe});
     }
 }
 

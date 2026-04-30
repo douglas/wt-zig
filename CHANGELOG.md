@@ -8,6 +8,9 @@
 - CI and release test gates now run fixture-based workflow smoke checks with `zig build smoke`
 - Command catalogs and docs now surface `hook` plus `config alias` discoverability, including `wt config alias show`, `wt config alias dry-run`, and `wt hook show`
 - Command catalogs and docs now surface `wt step eval [--dry-run] <template>` and `wt step for-each -- <command> [args...]`, including template-variable use in `for-each` args
+- Project-config aliases and hooks now require saved command approval before execution, with `wt config approvals show|add|clear`, root `--yes` for one-shot bypass, `WT_APPROVALS_DISABLED=1` for approval bypass, and `WT_HOOKS_DISABLED=1` for hook skipping
+- Added `wt step relocate [--dry-run] [--force]` to move the current worktree to its configured path through the migrate planner
+- Added `wt step promote [branch]` to swap a linked branch into the main worktree while requiring both worktrees to be clean
 
 ## 0.4.8 — 2026-04-26
 

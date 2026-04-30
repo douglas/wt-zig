@@ -10,6 +10,7 @@ const proc = @import("../process.zig");
 const prompt = @import("../prompt.zig");
 const template = @import("../template.zig");
 const cleanup_cmd = @import("cleanup.zig");
+const migrate_support = @import("migrate_support.zig");
 const worktree = @import("../git/worktree.zig");
 
 const ParsedDiffArgs = struct {
@@ -31,6 +32,11 @@ const ParsedEvalArgs = struct {
 
 const ParsedForEachArgs = struct {
     argv: []const []const u8,
+};
+
+const ParsedRelocateArgs = struct {
+    dry_run: bool = false,
+    force: bool = false,
 };
 
 const StageMode = enum {
@@ -181,6 +187,19 @@ pub fn run(
         return diff(ctx.allocator, parsed, stdout, stderr);
     }
 
+    if (std.mem.eql(u8, args[0], "relocate")) {
+        if (args.len > 1 and isHelpFlag(args[1])) {
+            try printRelocateHelp(ctx, stdout);
+            return 0;
+        }
+
+        const parsed = parseRelocateArgs(args[1..]) catch {
+            return output.usageError(ctx, stdout, stderr, "wt step relocate", "Usage: wt step relocate [--dry-run] [--force|-f]");
+        };
+
+        return relocate(ctx, cfg, parsed, stdout, stderr);
+    }
+
     if (std.mem.eql(u8, args[0], "copy-ignored")) {
         if (args.len > 1 and isHelpFlag(args[1])) {
             try printCopyIgnoredHelp(ctx, stdout);
@@ -241,6 +260,17 @@ pub fn run(
             return output.usageError(ctx, stdout, stderr, "wt step push", "Usage: wt step push [target]");
         };
         return push(ctx, parsed, stdout, stderr);
+    }
+
+    if (std.mem.eql(u8, args[0], "promote")) {
+        if (args.len > 1 and isHelpFlag(args[1])) {
+            try printPromoteHelp(ctx, stdout);
+            return 0;
+        }
+        const parsed = parseSingleTargetArgs(args[1..]) catch {
+            return output.usageError(ctx, stdout, stderr, "wt step promote", "Usage: wt step promote [branch]");
+        };
+        return promote(ctx, parsed, stdout, stderr);
     }
 
     if (std.mem.eql(u8, args[0], "prune")) {
@@ -363,8 +393,10 @@ fn printHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
         \\  eval  Render a template in the current worktree context
         \\  for-each  Run a command in each non-prunable worktree
         \\  prune  Remove worktrees for merged branches
+        \\  promote  Swap a branch into the main worktree
         \\  push  Fast-forward a target branch to the current branch
         \\  rebase  Rebase the current branch onto a target
+        \\  relocate  Move the current worktree to its configured path
         \\  squash  Squash current branch changes into one commit
         \\
     );
@@ -436,6 +468,20 @@ fn printPushHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
     );
 }
 
+fn printPromoteHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
+    try output.commandHelp(ctx, stdout, "wt step promote",
+        \\Swap a branch into the main worktree.
+        \\
+        \\Usage:
+        \\  wt step promote [branch]
+        \\
+        \\Without a branch, linked worktrees promote their current branch and
+        \\the main worktree restores the default branch. Both involved
+        \\worktrees must be clean and attached to local branches.
+        \\
+    );
+}
+
 fn printCopyIgnoredHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
     try output.commandHelp(ctx, stdout, "wt step copy-ignored",
         \\Copy ignored files and directories from one worktree to another.
@@ -464,6 +510,20 @@ fn printDiffHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
         \\Arguments after -- are forwarded to git diff, for example:
         \\  wt step diff -- --stat
         \\  wt step diff main -- --name-only
+        \\
+    );
+}
+
+fn printRelocateHelp(ctx: output.Context, stdout: *std.Io.Writer) !void {
+    try output.commandHelp(ctx, stdout, "wt step relocate",
+        \\Move the current worktree to its configured path.
+        \\
+        \\Usage:
+        \\  wt step relocate [--dry-run] [--force|-f]
+        \\
+        \\Uses the same target planner as `wt migrate`, but applies only to the
+        \\current worktree. `--force` removes an existing target file or
+        \\non-empty directory before moving.
         \\
     );
 }
@@ -600,6 +660,22 @@ fn parseSingleTargetArgs(args: []const []const u8) !ParsedTargetArgs {
     return parsed;
 }
 
+fn parseRelocateArgs(args: []const []const u8) !ParsedRelocateArgs {
+    var parsed = ParsedRelocateArgs{};
+    for (args) |arg| {
+        if (std.mem.eql(u8, arg, "--dry-run")) {
+            parsed.dry_run = true;
+            continue;
+        }
+        if (std.mem.eql(u8, arg, "--force") or std.mem.eql(u8, arg, "-f")) {
+            parsed.force = true;
+            continue;
+        }
+        return error.InvalidArguments;
+    }
+    return parsed;
+}
+
 fn parseStageMode(raw: []const u8) ?StageMode {
     if (std.mem.eql(u8, raw, "all")) return .all;
     if (std.mem.eql(u8, raw, "tracked")) return .tracked;
@@ -725,6 +801,59 @@ fn forEach(
     }
     try stderr.print("Completed in {d} worktrees.\n", .{completed});
     return 0;
+}
+
+fn relocate(
+    ctx: output.Context,
+    cfg: *const config.Resolved,
+    parsed: ParsedRelocateArgs,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const allocator = ctx.allocator;
+    var env_map = try std.process.getEnvMap(allocator);
+    defer env_map.deinit();
+
+    var listed = worktree.list(allocator, stderr) catch return 1;
+    defer listed.deinit(allocator);
+
+    var info = git_repo.getRepoInfoWithWorktrees(allocator, listed.entries) catch {
+        try stderr.writeAll("failed to resolve repository info\n");
+        return 1;
+    };
+    defer git_repo.freeRepoInfo(allocator, &info);
+
+    const current_path = repoRoot(allocator) catch {
+        try stderr.writeAll("failed to resolve current worktree\n");
+        return 1;
+    };
+    defer allocator.free(current_path);
+
+    const current_entry = findWorktreeByPath(listed.entries, current_path) orelse {
+        try stderr.writeAll("current directory is not inside a git worktree\n");
+        return 1;
+    };
+
+    const plan = try migrate_support.buildPlan(allocator, cfg, info, listed.entries, &env_map, parsed.force);
+    defer migrate_support.freePlan(allocator, plan);
+
+    const planned_item = findPlanItemByPath(plan, current_entry.path) orelse {
+        try stderr.writeAll("current worktree was not included in relocation plan\n");
+        return 1;
+    };
+
+    const item = if (current_entry.locked != null)
+        lockedRelocateItem(planned_item)
+    else if (try isWorktreeDirty(allocator, current_entry.path))
+        dirtyRelocateItem(planned_item)
+    else
+        planned_item;
+
+    var selected = [_]migrate_support.PlanItem{item};
+    if (parsed.dry_run) {
+        return printRelocateDryRun(ctx, parsed.force, selected[0], stdout);
+    }
+    return migrate_support.applyPlanWithCommand(ctx, parsed.force, &selected, "wt step relocate", stdout, stderr);
 }
 
 fn commit(
@@ -863,6 +992,120 @@ fn push(
     return 0;
 }
 
+fn promote(
+    ctx: output.Context,
+    parsed: ParsedTargetArgs,
+    stdout: *std.Io.Writer,
+    stderr: *std.Io.Writer,
+) !u8 {
+    const allocator = ctx.allocator;
+    var listed = worktree.list(allocator, stderr) catch return 1;
+    defer listed.deinit(allocator);
+
+    if (listed.entries.len == 0) {
+        try stderr.writeAll("no worktrees found\n");
+        return 1;
+    }
+
+    var info = git_repo.getRepoInfoWithWorktrees(allocator, listed.entries) catch {
+        try stderr.writeAll("failed to resolve repository info\n");
+        return 1;
+    };
+    defer git_repo.freeRepoInfo(allocator, &info);
+
+    const current_path = repoRoot(allocator) catch {
+        try stderr.writeAll("failed to resolve current worktree\n");
+        return 1;
+    };
+    defer allocator.free(current_path);
+
+    const current_entry = findWorktreeByPath(listed.entries, current_path) orelse {
+        try stderr.writeAll("current directory is not inside a git worktree\n");
+        return 1;
+    };
+    const main_entry = findWorktreeByPath(listed.entries, info.main) orelse listed.entries[0];
+
+    if (main_entry.bare or current_entry.bare) {
+        try stderr.writeAll("wt step promote does not support bare repositories\n");
+        return 1;
+    }
+    if (main_entry.detached or main_entry.branch == null) {
+        try stderr.writeAll("main worktree must be attached to a local branch\n");
+        return 1;
+    }
+    if (current_entry.detached or current_entry.branch == null) {
+        try stderr.writeAll("current worktree must be attached to a local branch\n");
+        return 1;
+    }
+
+    const default_base = try git_repo.getDefaultBase(allocator);
+    defer allocator.free(default_base);
+    const promote_branch = if (parsed.target) |branch|
+        branch
+    else if (std.mem.eql(u8, current_entry.path, main_entry.path))
+        default_base
+    else
+        current_entry.branch.?;
+
+    const target_entry = findWorktreeByBranch(listed.entries, promote_branch) orelse {
+        const safe = prompt.sanitizeForTerminal(allocator, promote_branch) catch promote_branch;
+        defer if (safe.ptr != promote_branch.ptr) allocator.free(safe);
+        try stderr.print("worktree not found for branch: {s}\n", .{safe});
+        return 1;
+    };
+
+    if (target_entry.detached or target_entry.branch == null) {
+        try stderr.writeAll("target worktree must be attached to a local branch\n");
+        return 1;
+    }
+    if (std.mem.eql(u8, main_entry.path, target_entry.path)) {
+        if (output.isJson(ctx)) {
+            try output.emitSuccess(ctx, stdout, "wt step promote", .{
+                .status = "unchanged",
+                .main = main_entry.path,
+                .main_branch = main_entry.branch.?,
+            });
+        } else {
+            try stdout.print("Main worktree already has {s}.\n", .{main_entry.branch.?});
+        }
+        return 0;
+    }
+
+    if (try isWorktreeDirty(allocator, main_entry.path)) {
+        try stderr.writeAll("main worktree is dirty; commit or stash changes before promote\n");
+        return 1;
+    }
+    if (try isWorktreeDirty(allocator, target_entry.path)) {
+        try stderr.writeAll("target worktree is dirty; commit or stash changes before promote\n");
+        return 1;
+    }
+
+    const previous_main_branch = main_entry.branch.?;
+    if (!output.isJson(ctx)) {
+        try stdout.print("Promoting {s} into main worktree...\n", .{promote_branch});
+    }
+    if (!try swapWorktreeBranches(allocator, main_entry.path, previous_main_branch, target_entry.path, promote_branch, stderr)) {
+        return 1;
+    }
+
+    if (output.isJson(ctx)) {
+        try output.emitSuccess(ctx, stdout, "wt step promote", .{
+            .status = "promoted",
+            .main = main_entry.path,
+            .main_branch = promote_branch,
+            .target = target_entry.path,
+            .target_branch = previous_main_branch,
+        });
+    } else {
+        try stdout.print("Main worktree now has {s}; {s} now has {s}.\n", .{
+            promote_branch,
+            target_entry.path,
+            previous_main_branch,
+        });
+    }
+    return 0;
+}
+
 pub fn fastForwardBranchRef(
     allocator: std.mem.Allocator,
     target_branch: []const u8,
@@ -934,7 +1177,7 @@ fn runHooksForCurrentWorktree(
 
     var hook_env = try currentHookEnv(allocator);
     defer hook_env.deinit();
-    hooks.runHooks(allocator, hook_name, hook_commands, &hook_env, stderr) catch |err| switch (err) {
+    hooks.runApprovedHooks(allocator, cfg, hook_name, hook_commands, &hook_env, stderr) catch |err| switch (err) {
         error.HookCommandFailed => return false,
         else => return err,
     };
@@ -952,7 +1195,7 @@ fn runPostHookForCurrentWorktree(
 
     var hook_env = try currentHookEnv(allocator);
     defer hook_env.deinit();
-    hooks.runHooks(allocator, hook_name, hook_commands, &hook_env, stderr) catch {};
+    hooks.runApprovedHooks(allocator, cfg, hook_name, hook_commands, &hook_env, stderr) catch {};
 }
 
 fn currentHookEnv(allocator: std.mem.Allocator) !std.process.EnvMap {
@@ -1121,11 +1364,81 @@ fn findWorktreePathByBranch(entries: []const worktree.Entry, branch: []const u8)
     return null;
 }
 
+fn findWorktreeByBranch(entries: []const worktree.Entry, branch: []const u8) ?worktree.Entry {
+    for (entries) |entry| {
+        if (entry.branch) |entry_branch| {
+            if (std.mem.eql(u8, entry_branch, branch)) return entry;
+        }
+    }
+    return null;
+}
+
 fn findWorktreeByPath(entries: []const worktree.Entry, path_value: []const u8) ?worktree.Entry {
     for (entries) |entry| {
         if (std.mem.eql(u8, entry.path, path_value)) return entry;
     }
     return null;
+}
+
+fn findPlanItemByPath(plan: []const migrate_support.PlanItem, path_value: []const u8) ?migrate_support.PlanItem {
+    for (plan) |item| {
+        if (std.mem.eql(u8, item.from, path_value)) return item;
+    }
+    return null;
+}
+
+fn lockedRelocateItem(item: migrate_support.PlanItem) migrate_support.PlanItem {
+    var skipped = item;
+    skipped.action = .skip;
+    skipped.reason = "locked worktree";
+    return skipped;
+}
+
+fn dirtyRelocateItem(item: migrate_support.PlanItem) migrate_support.PlanItem {
+    var skipped = item;
+    skipped.action = .skip;
+    skipped.reason = "dirty worktree";
+    return skipped;
+}
+
+fn printRelocateDryRun(
+    ctx: output.Context,
+    force: bool,
+    item: migrate_support.PlanItem,
+    stdout: *std.Io.Writer,
+) !u8 {
+    if (output.isJson(ctx)) {
+        const result = [_]struct {
+            branch: []const u8,
+            from: []const u8,
+            to: ?[]const u8,
+            action: []const u8,
+            primary: bool,
+            reason: ?[]const u8,
+        }{.{
+            .branch = item.branch,
+            .from = item.from,
+            .to = item.to,
+            .action = @tagName(item.action),
+            .primary = item.primary,
+            .reason = if (item.reason.len == 0) null else item.reason,
+        }};
+        try output.emitSuccess(ctx, stdout, "wt step relocate", .{
+            .dry_run = true,
+            .force = force,
+            .total = @as(usize, 1),
+            .results = result[0..],
+        });
+        return 0;
+    }
+
+    const target = item.to orelse "(none)";
+    switch (item.action) {
+        .move, .move_force => try stdout.print("Would move {s}: {s} -> {s}\n", .{ item.branch, item.from, target }),
+        .skip => try stdout.print("Would skip {s}: {s}\n", .{ item.branch, item.reason }),
+    }
+    try stdout.writeAll("\nRelocation dry run complete: 0 moved, 1 previewed\n");
+    return 0;
 }
 
 fn worktreeLabel(entry: worktree.Entry) []const u8 {
@@ -1695,6 +2008,37 @@ fn refExists(allocator: std.mem.Allocator, worktree_root: []const u8, ref: []con
     return result.succeeded();
 }
 
+fn isWorktreeDirty(allocator: std.mem.Allocator, worktree_root: []const u8) !bool {
+    var result = try proc.run(allocator, &.{ "git", "-C", worktree_root, "status", "--porcelain" });
+    defer result.deinit(allocator);
+    if (!result.succeeded()) return error.GitCommandFailed;
+    return std.mem.trim(u8, result.stdout, " \r\n\t").len != 0;
+}
+
+fn swapWorktreeBranches(
+    allocator: std.mem.Allocator,
+    main_path: []const u8,
+    main_branch: []const u8,
+    target_path: []const u8,
+    target_branch: []const u8,
+    stderr: *std.Io.Writer,
+) !bool {
+    if (!try gitQuiet(allocator, &.{ "git", "-C", main_path, "checkout", "--detach", target_branch }, stderr, "failed to detach main worktree")) {
+        return false;
+    }
+    if (!try gitQuiet(allocator, &.{ "git", "-C", target_path, "checkout", "--detach", main_branch }, stderr, "failed to detach target worktree")) {
+        _ = gitQuiet(allocator, &.{ "git", "-C", main_path, "switch", main_branch }, stderr, "failed to restore main worktree") catch false;
+        return false;
+    }
+    if (!try gitQuiet(allocator, &.{ "git", "-C", main_path, "switch", target_branch }, stderr, "failed to switch main worktree")) {
+        return false;
+    }
+    if (!try gitQuiet(allocator, &.{ "git", "-C", target_path, "switch", main_branch }, stderr, "failed to switch target worktree")) {
+        return false;
+    }
+    return true;
+}
+
 fn mergeBase(
     allocator: std.mem.Allocator,
     worktree_root: []const u8,
@@ -1841,6 +2185,32 @@ test "parseSingleTargetArgs accepts optional target" {
     const parsed = try parseSingleTargetArgs(&.{"main"});
     try std.testing.expectEqualStrings("main", parsed.target.?);
     try std.testing.expectError(error.InvalidArguments, parseSingleTargetArgs(&.{ "main", "next" }));
+}
+
+test "parseRelocateArgs accepts dry-run and force" {
+    const parsed = try parseRelocateArgs(&.{ "--dry-run", "-f" });
+    try std.testing.expect(parsed.dry_run);
+    try std.testing.expect(parsed.force);
+    try std.testing.expectError(error.InvalidArguments, parseRelocateArgs(&.{"branch"}));
+}
+
+test "relocate skip item helpers preserve target" {
+    const item = migrate_support.PlanItem{
+        .branch = "feature",
+        .from = "/repo/old",
+        .to = "/repo/new",
+        .primary = false,
+        .action = .move,
+    };
+
+    const locked = lockedRelocateItem(item);
+    try std.testing.expectEqual(migrate_support.Action.skip, locked.action);
+    try std.testing.expectEqualStrings("locked worktree", locked.reason);
+    try std.testing.expectEqualStrings("/repo/new", locked.to.?);
+
+    const dirty = dirtyRelocateItem(item);
+    try std.testing.expectEqual(migrate_support.Action.skip, dirty.action);
+    try std.testing.expectEqualStrings("dirty worktree", dirty.reason);
 }
 
 test "parseIgnoredEntries trims ignored directory suffixes" {

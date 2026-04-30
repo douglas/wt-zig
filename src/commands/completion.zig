@@ -102,7 +102,7 @@ fn bashScript() []const u8 {
     \\            return 0
     \\            ;;
     \\        step)
-    \\            COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each prune push rebase squash" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "commit copy-ignored diff eval for-each promote prune push rebase relocate squash" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        merge)
@@ -110,7 +110,7 @@ fn bashScript() []const u8 {
     \\            return 0
     \\            ;;
     \\        config)
-    \\            COMPREPLY=( $(compgen -W "init show path alias" -- "$cur") )
+    \\            COMPREPLY=( $(compgen -W "init show path alias approvals" -- "$cur") )
     \\            return 0
     \\            ;;
     \\        hook)
@@ -134,14 +134,14 @@ fn fishScript() []const u8 {
     \\set -l wt_commands switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion
     \\
     \\complete -c wt -n "__fish_use_subcommand" -a "$wt_commands"
-    \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path alias"
+    \\complete -c wt -n "__fish_seen_subcommand_from config" -a "init show path alias approvals"
     \\complete -c wt -n "__fish_seen_subcommand_from hook" -a "show"
     \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j checkout co create" -a "(git branch -a --format='%(refname:short)' 2>/dev/null | sed 's#^.*/##' | sort -u)"
     \\complete -c wt -n "__fish_seen_subcommand_from switch sw cd jump j" -a "--create -c --base --execute -x"
     \\complete -c wt -n "__fish_seen_subcommand_from remove rm" -a "(git worktree list 2>/dev/null | tail -n +2 | sed -n 's/.*\\[\\([^]]*\\)\\].*/\\1/p')"
     \\complete -c wt -n "__fish_seen_subcommand_from remove rm done" -a "--force -f --no-delete-branch --force-delete -D"
     \\complete -c wt -n "__fish_seen_subcommand_from list ls" -a "--full"
-    \\complete -c wt -n "__fish_seen_subcommand_from step" -a "commit copy-ignored diff prune push rebase squash"
+    \\complete -c wt -n "__fish_seen_subcommand_from step" -a "commit copy-ignored diff eval for-each promote prune push rebase relocate squash"
     \\complete -c wt -n "__fish_seen_subcommand_from merge" -a "--no-remove --no-ff --squash --rebase --push --no-hooks --message -m"
     \\complete -c wt -n "__fish_seen_subcommand_from ui" -a "jump remove --force -f"
     \\
@@ -184,7 +184,7 @@ fn powershellScript() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'step') {
-    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'prune', 'push', 'rebase', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('commit', 'copy-ignored', 'diff', 'eval', 'for-each', 'promote', 'prune', 'push', 'rebase', 'relocate', 'squash') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'merge') {
@@ -192,7 +192,7 @@ fn powershellScript() []const u8 {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'config') {
-    \\            @('init', 'show', 'path', 'alias') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
+    \\            @('init', 'show', 'path', 'alias', 'approvals') | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
     \\                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
     \\            }
     \\        } elseif ($subCommand -eq 'hook') {
@@ -277,7 +277,7 @@ fn zshScript() []const u8 {
     \\                ;;
     \\            step)
     \\                local -a step_cmds
-    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'squash:Squash branch changes into one commit')
+    \\                step_cmds=('commit:Commit staged or selected changes' 'copy-ignored:Copy ignored files and directories between worktrees' 'diff:Show all changes since branching' 'eval:Evaluate a template for each worktree' 'for-each:Run a command for each worktree' 'promote:Swap a branch into the main worktree' 'prune:Remove worktrees for merged branches' 'push:Fast-forward a target branch' 'rebase:Rebase onto a target branch' 'relocate:Move current worktree to configured path' 'squash:Squash branch changes into one commit')
     \\                _describe 'step command' step_cmds
     \\                ;;
     \\            merge)
@@ -287,7 +287,7 @@ fn zshScript() []const u8 {
     \\                ;;
     \\            config)
     \\                local -a config_cmds
-    \\                config_cmds=('init:Create a default configuration file' 'show:Show effective configuration with sources' 'path:Print the config file path' 'alias:Inspect configured aliases')
+    \\                config_cmds=('init:Create a default configuration file' 'show:Show effective configuration with sources' 'path:Print the config file path' 'alias:Inspect configured aliases' 'approvals:Manage project command approvals')
     \\                _describe 'config command' config_cmds
     \\                ;;
     \\            hook)
@@ -365,9 +365,9 @@ test "completion bash script contains completer" {
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "complete -F _wt_complete wt") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "ui)") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "jump remove --force -f") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each prune push rebase squash") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commit copy-ignored diff eval for-each promote prune push rebase relocate squash") != null);
     try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "commands=\"switch sw cd jump j checkout co create default pr mr list ls remove rm done status step cleanup merge migrate prune help hook shellenv init info config examples version ui completion\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias") != null);
+    try std.testing.expect(std.mem.indexOf(u8, stdout_buffer.items, "init show path alias approvals") != null);
 }
 
 test "completion reports unknown shell in text mode" {

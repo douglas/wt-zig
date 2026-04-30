@@ -90,6 +90,7 @@ pub fn printRoot(ctx: output.Context, cfg: *const config.Resolved, writer: *std.
         \\Flags:
         \\      --config string   Path to config file (default: ~/.config/wt/config.toml)
         \\      --format string   Output format: text or json (default "text")
+        \\  -y, --yes             Bypass project command approval once without saving it
         \\  -h, --help            help for wt
         \\
         \\Use "wt [command] --help" for more information about a command.

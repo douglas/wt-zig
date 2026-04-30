@@ -1,5 +1,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
+const approvals = @import("approvals.zig");
 const config = @import("config.zig");
 const fs = @import("fs.zig");
 const path = @import("path.zig");
@@ -46,7 +47,7 @@ pub fn runStartHooks(
     if (pre_hooks.len != 0) {
         var pre_hook_env = try buildHookEnv(allocator, info, branch, worktree_path);
         defer pre_hook_env.deinit();
-        try runHooks(allocator, "pre_start", pre_hooks, &pre_hook_env, stderr);
+        try runApprovedHooks(allocator, cfg, "pre_start", pre_hooks, &pre_hook_env, stderr);
     }
 
     const post_hooks = getHooks(cfg, "post_start");
@@ -54,7 +55,7 @@ pub fn runStartHooks(
 
     var post_hook_env = try buildHookEnv(allocator, info, branch, worktree_path);
     defer post_hook_env.deinit();
-    try runHooksDetached(allocator, "post_start", post_hooks, &post_hook_env, stderr);
+    try runApprovedHooksDetached(allocator, cfg, "post_start", post_hooks, &post_hook_env, stderr);
 }
 
 pub fn buildHookEnv(
@@ -86,6 +87,22 @@ pub fn runHooks(
     defer current_env.deinit();
 
     try runHooksWithEnvMap(allocator, &current_env, hook_name, hook_commands, hook_env, stderr);
+}
+
+pub fn runApprovedHooks(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    hook_name: []const u8,
+    hook_commands: []const []const u8,
+    hook_env: *const std.process.EnvMap,
+    stderr: *std.Io.Writer,
+) !void {
+    if (try hooksDisabled(allocator)) return;
+    approvals.ensureHookApproved(allocator, cfg, hook_name, stderr) catch |err| switch (err) {
+        error.CommandApprovalRequired => return error.HookCommandFailed,
+        else => return err,
+    };
+    try runHooks(allocator, hook_name, hook_commands, hook_env, stderr);
 }
 
 pub fn runHooksDetached(
@@ -135,6 +152,32 @@ pub fn runHooksDetached(
             try stderr.print("warning: failed to start {s} hook: {s}\n", .{ hook_name, @errorName(err) });
         };
     }
+}
+
+pub fn runApprovedHooksDetached(
+    allocator: std.mem.Allocator,
+    cfg: *const config.Resolved,
+    hook_name: []const u8,
+    hook_commands: []const []const u8,
+    hook_env: *const std.process.EnvMap,
+    stderr: *std.Io.Writer,
+) !void {
+    if (try hooksDisabled(allocator)) return;
+    approvals.ensureHookApproved(allocator, cfg, hook_name, stderr) catch |err| switch (err) {
+        error.CommandApprovalRequired => return error.HookCommandFailed,
+        else => return err,
+    };
+    try runHooksDetached(allocator, hook_name, hook_commands, hook_env, stderr);
+}
+
+fn hooksDisabled(allocator: std.mem.Allocator) !bool {
+    var current_env = try std.process.getEnvMap(allocator);
+    defer current_env.deinit();
+
+    if (current_env.get("WT_HOOKS_DISABLED")) |value| {
+        if (std.mem.eql(u8, value, "1")) return true;
+    }
+    return false;
 }
 
 fn runHooksWithEnvMap(

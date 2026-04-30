@@ -327,7 +327,7 @@ fn runMergeHook(
     hook_env: *const std.process.EnvMap,
     stderr: *std.Io.Writer,
 ) !bool {
-    hooks.runHooks(allocator, hook_name, hooks.getHooks(cfg, hook_name), hook_env, stderr) catch |err| switch (err) {
+    hooks.runApprovedHooks(allocator, cfg, hook_name, hooks.getHooks(cfg, hook_name), hook_env, stderr) catch |err| switch (err) {
         error.HookCommandFailed => return false,
         else => return err,
     };
@@ -341,7 +341,7 @@ fn runMergePostHook(
     hook_env: *const std.process.EnvMap,
     stderr: *std.Io.Writer,
 ) !void {
-    hooks.runHooks(allocator, hook_name, hooks.getHooks(cfg, hook_name), hook_env, stderr) catch {};
+    hooks.runApprovedHooks(allocator, cfg, hook_name, hooks.getHooks(cfg, hook_name), hook_env, stderr) catch {};
 }
 
 fn findBranchWorktree(entries: []const worktree.Entry, branch: []const u8) ?worktree.Entry {

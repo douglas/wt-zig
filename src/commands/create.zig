@@ -103,7 +103,7 @@ pub fn createBranch(
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, target_path);
     defer hook_env.deinit();
 
-    try hooks.runHooks(allocator, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr);
+    try hooks.runApprovedHooks(allocator, cfg, "pre_create", hooks.getHooks(cfg, "pre_create"), &hook_env, stderr);
 
     const success = try runGitCreate(allocator, target_path, branch, base, stderr);
     if (!success) return error.GitCommandFailed;
@@ -116,7 +116,7 @@ pub fn createBranch(
         if (std.Thread.spawn(.{}, cow_copy.warmDiskCache, .{target_path})) |t| t.detach() else |_| {}
     }
 
-    hooks.runHooks(allocator, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
+    hooks.runApprovedHooks(allocator, cfg, "post_create", hooks.getHooks(cfg, "post_create"), &hook_env, stderr) catch {};
 
     hooks.runStartHooks(allocator, cfg, info, branch, target_path, stderr) catch |err| switch (err) {
         error.HookCommandFailed => return error.StartHookFailed,

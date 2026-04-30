@@ -258,7 +258,7 @@ pub fn removeWorktree(
     var hook_env = try hooks.buildHookEnv(allocator, info, branch, existing_path);
     defer hook_env.deinit();
 
-    try hooks.runHooks(allocator, "pre_remove", hooks.getHooks(cfg, "pre_remove"), &hook_env, stderr);
+    try hooks.runApprovedHooks(allocator, cfg, "pre_remove", hooks.getHooks(cfg, "pre_remove"), &hook_env, stderr);
 
     const navigate_to = try navigationTarget(allocator, existing_path, info.main);
     errdefer if (navigate_to) |path| allocator.free(path);
@@ -278,7 +278,7 @@ pub fn removeWorktree(
         );
     };
 
-    hooks.runHooks(allocator, "post_remove", hooks.getHooks(cfg, "post_remove"), &hook_env, stderr) catch {};
+    hooks.runApprovedHooks(allocator, cfg, "post_remove", hooks.getHooks(cfg, "post_remove"), &hook_env, stderr) catch {};
 
     if (branch_cleanup.delete_branch) {
         const deleted = try git_repo.deleteBranch(

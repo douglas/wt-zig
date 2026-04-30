@@ -90,8 +90,8 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "config",
         .summary = "Inspect resolved configuration values",
-        .usage = "wt config <show|path|init|alias>",
-        .details = "Inspect the active config file path, print effective configuration sources, manage configured aliases with `wt config alias show [name]` and `wt config alias dry-run <name> [-- <args>...]`, or create a starter config file with `wt config init [--force]`.",
+        .usage = "wt config <show|path|init|alias|approvals>",
+        .details = "Inspect the active config file path, print effective configuration sources, manage configured aliases with `wt config alias show [name]` and `wt config alias dry-run <name> [-- <args>...]`, manage project command approvals with `wt config approvals <show|add|clear>`, or create a starter config file with `wt config init [--force]`.",
     },
     .{
         .kind = .hook,
@@ -252,8 +252,8 @@ pub const all = [_]Spec{
         .aliases = &.{},
         .display = "step",
         .summary = "Run focused workflow steps",
-        .usage = "wt step <commit|squash|rebase|push|diff|copy-ignored|prune> ...",
-        .details = "Run workflow subcommands. `wt step commit`, `squash`, `rebase`, and `push` provide deterministic git-backed workflow primitives. `wt step diff` shows all changes since branching, including committed, staged, unstaged, and untracked files. `wt step copy-ignored` copies gitignored files and directories between worktrees, optionally constrained by `.worktreeinclude`.",
+        .usage = "wt step <commit|squash|rebase|push|promote|diff|copy-ignored|relocate|prune> ...",
+        .details = "Run workflow subcommands. `wt step commit`, `squash`, `rebase`, and `push` provide deterministic git-backed workflow primitives. `wt step promote` swaps a branch into the main worktree. `wt step diff` shows all changes since branching, including committed, staged, unstaged, and untracked files. `wt step copy-ignored` copies gitignored files and directories between worktrees, optionally constrained by `.worktreeinclude`. `wt step relocate` moves the current worktree to its configured path using the migrate planner.",
     },
     .{
         .kind = .ui,

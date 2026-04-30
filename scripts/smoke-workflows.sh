@@ -17,6 +17,7 @@ export HOME="$home_dir"
 export GIT_CONFIG_GLOBAL=/dev/null
 export GIT_CONFIG_NOSYSTEM=1
 export WT_CONFIG="$config_file"
+export WT_APPROVALS_PATH="$run_root/approvals.toml"
 
 fail() {
     printf 'smoke failed: %s\n' "$1" >&2
@@ -85,6 +86,9 @@ write_lines "$config_file" \
     "[hooks]" \
     "pre_start = [\"echo pre start\"]"
 
+run_wt "$repo_dir" config approvals add >/dev/null
+assert_contains "$(run_wt "$repo_dir" config approvals show)" "printf '%s\\n' alias" "approvals include alias command"
+
 alias_output="$(run_wt "$repo_dir" echo one two)"
 assert_eq $'alias\none\ntwo' "$alias_output" "alias output"
 assert_contains "$(run_wt "$repo_dir" config alias show)" "ship:" "alias catalog"
@@ -107,6 +111,23 @@ write_lines "$feature_dir/feature.txt" "feature-2"
 run_wt "$feature_dir" step squash main --message "feature squash" >/dev/null
 assert_eq "feature squash" "$(git -C "$feature_dir" log -1 --pretty=%s)" "step squash subject"
 assert_clean_tree "$feature_dir"
+
+promote_main="$run_root/promote-main"
+promote_feature="$run_root/promote-feature"
+git -c init.defaultBranch=main init "$promote_main" >/dev/null
+git -C "$promote_main" symbolic-ref HEAD refs/heads/main
+git -C "$promote_main" config user.name "wt smoke"
+git -C "$promote_main" config user.email "wt-smoke@example.com"
+write_lines "$promote_main/base.txt" "base"
+git -C "$promote_main" add base.txt
+git -C "$promote_main" commit -m "base" >/dev/null
+git -C "$promote_main" worktree add "$promote_feature" -b promote-feature >/dev/null 2>&1
+run_wt "$promote_feature" step promote promote-feature >/dev/null
+assert_eq "promote-feature" "$(git -C "$promote_main" branch --show-current)" "promote main branch"
+assert_eq "main" "$(git -C "$promote_feature" branch --show-current)" "promote linked branch"
+run_wt "$promote_main" step promote >/dev/null
+assert_eq "main" "$(git -C "$promote_main" branch --show-current)" "promote restore main branch"
+assert_eq "promote-feature" "$(git -C "$promote_feature" branch --show-current)" "promote restore linked branch"
 
 write_lines "$repo_dir/main.txt" "main-advance"
 git -C "$repo_dir" add main.txt
