@@ -69,6 +69,16 @@ assert_clean_tree() {
     assert_eq "" "$status" "expected clean tree at $1"
 }
 
+assert_file_eq() {
+    local path="$1"
+    local expected="$2"
+    local label="$3"
+    if [[ ! -f "$path" ]]; then
+        fail "$label missing file: $path"
+    fi
+    assert_eq "$expected" "$(<"$path")" "$label"
+}
+
 git -c init.defaultBranch=main init "$repo_dir" >/dev/null
 git -C "$repo_dir" symbolic-ref HEAD refs/heads/main
 git -C "$repo_dir" config user.name "wt smoke"
@@ -121,13 +131,29 @@ git -C "$promote_main" config user.email "wt-smoke@example.com"
 write_lines "$promote_main/base.txt" "base"
 git -C "$promote_main" add base.txt
 git -C "$promote_main" commit -m "base" >/dev/null
+write_lines "$promote_main/.gitignore" "build/" "*.log"
+git -C "$promote_main" add .gitignore
+git -C "$promote_main" commit -m "add gitignore" >/dev/null
 git -C "$promote_main" worktree add "$promote_feature" -b promote-feature >/dev/null 2>&1
+mkdir -p "$promote_main/build" "$promote_feature/build"
+write_lines "$promote_main/build/main-artifact" "main build"
+write_lines "$promote_main/app.log" "main log"
+write_lines "$promote_feature/build/feature-artifact" "feature build"
+write_lines "$promote_feature/debug.log" "feature log"
 run_wt "$promote_feature" step promote promote-feature >/dev/null
 assert_eq "promote-feature" "$(git -C "$promote_main" branch --show-current)" "promote main branch"
 assert_eq "main" "$(git -C "$promote_feature" branch --show-current)" "promote linked branch"
+assert_file_eq "$promote_main/build/feature-artifact" "feature build" "promote main ignored directory"
+assert_file_eq "$promote_main/debug.log" "feature log" "promote main ignored file"
+assert_file_eq "$promote_feature/build/main-artifact" "main build" "promote linked ignored directory"
+assert_file_eq "$promote_feature/app.log" "main log" "promote linked ignored file"
 run_wt "$promote_main" step promote >/dev/null
 assert_eq "main" "$(git -C "$promote_main" branch --show-current)" "promote restore main branch"
 assert_eq "promote-feature" "$(git -C "$promote_feature" branch --show-current)" "promote restore linked branch"
+assert_file_eq "$promote_main/build/main-artifact" "main build" "promote restore main ignored directory"
+assert_file_eq "$promote_main/app.log" "main log" "promote restore main ignored file"
+assert_file_eq "$promote_feature/build/feature-artifact" "feature build" "promote restore linked ignored directory"
+assert_file_eq "$promote_feature/debug.log" "feature log" "promote restore linked ignored file"
 
 write_lines "$repo_dir/main.txt" "main-advance"
 git -C "$repo_dir" add main.txt

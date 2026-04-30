@@ -60,6 +60,11 @@ const ParsedSquashArgs = struct {
     stage: StageMode = .all,
 };
 
+const PromoteStaged = struct {
+    dir: []const u8,
+    count: usize,
+};
+
 const IgnoredEntry = struct {
     path: []const u8,
     directory: bool,
@@ -1080,6 +1085,37 @@ fn promote(
         return 1;
     }
 
+    const staging_dir = try promoteStagingDir(allocator, main_entry.path);
+    defer allocator.free(staging_dir);
+    if (fs.fileExists(staging_dir)) {
+        try stderr.print(
+            "Found leftover staging directory from an interrupted promote.\nFiles may need manual recovery from: {s}\nRemove it to retry: rm -rf \"{s}\"\n",
+            .{ staging_dir, staging_dir },
+        );
+        return 1;
+    }
+
+    var main_ignored = collectIgnoredEntries(allocator, main_entry.path, stderr) catch return 1;
+    defer main_ignored.deinit(allocator);
+    try filterIgnoredEntries(allocator, main_entry.path, listed.entries, &.{}, &main_ignored);
+
+    var target_ignored = collectIgnoredEntries(allocator, target_entry.path, stderr) catch return 1;
+    defer target_ignored.deinit(allocator);
+    try filterIgnoredEntries(allocator, target_entry.path, listed.entries, &.{}, &target_ignored);
+
+    const staged = if (main_ignored.entries.len != 0 or target_ignored.entries.len != 0)
+        try stagePromoteIgnored(
+            allocator,
+            staging_dir,
+            main_entry.path,
+            main_ignored.entries,
+            target_entry.path,
+            target_ignored.entries,
+        )
+    else
+        PromoteStaged{ .dir = staging_dir, .count = 0 };
+    const has_staged_files = staged.count != 0;
+
     const previous_main_branch = main_entry.branch.?;
     if (!output.isJson(ctx)) {
         try stdout.print("Promoting {s} into main worktree...\n", .{promote_branch});
@@ -1088,6 +1124,18 @@ fn promote(
         return 1;
     }
 
+    const swapped = if (has_staged_files)
+        try distributePromoteIgnored(
+            allocator,
+            staged.dir,
+            main_entry.path,
+            main_ignored.entries,
+            target_entry.path,
+            target_ignored.entries,
+        )
+    else
+        @as(usize, 0);
+
     if (output.isJson(ctx)) {
         try output.emitSuccess(ctx, stdout, "wt step promote", .{
             .status = "promoted",
@@ -1095,6 +1143,7 @@ fn promote(
             .main_branch = promote_branch,
             .target = target_entry.path,
             .target_branch = previous_main_branch,
+            .swapped_ignored = swapped,
         });
     } else {
         try stdout.print("Main worktree now has {s}; {s} now has {s}.\n", .{
@@ -1102,8 +1151,137 @@ fn promote(
             target_entry.path,
             previous_main_branch,
         });
+        if (swapped != 0) {
+            try stdout.print("Swapped {d} gitignored {s}.\n", .{
+                swapped,
+                pluralize(swapped, "path", "paths"),
+            });
+        }
     }
     return 0;
+}
+
+fn promoteStagingDir(allocator: std.mem.Allocator, worktree_path: []const u8) ![]const u8 {
+    const git_dir = try gitOutputTrimmedInPath(allocator, worktree_path, &.{ "rev-parse", "--git-common-dir" });
+    defer allocator.free(git_dir);
+
+    const common_dir = if (std.fs.path.isAbsolute(git_dir))
+        try allocator.dupe(u8, git_dir)
+    else
+        try std.fs.path.join(allocator, &.{ worktree_path, git_dir });
+    defer allocator.free(common_dir);
+
+    return std.fs.path.join(allocator, &.{ common_dir, "wt", "staging", "promote" });
+}
+
+fn stagePromoteIgnored(
+    allocator: std.mem.Allocator,
+    staging_dir: []const u8,
+    main_path: []const u8,
+    main_entries: []const IgnoredEntry,
+    target_path: []const u8,
+    target_entries: []const IgnoredEntry,
+) !PromoteStaged {
+    try fs.ensureDir(allocator, staging_dir);
+
+    const staging_a = try std.fs.path.join(allocator, &.{ staging_dir, "a" });
+    defer allocator.free(staging_a);
+    const staging_b = try std.fs.path.join(allocator, &.{ staging_dir, "b" });
+    defer allocator.free(staging_b);
+
+    var count: usize = 0;
+    count += try moveIgnoredEntriesToStaging(allocator, main_path, main_entries, staging_a);
+    count += try moveIgnoredEntriesToStaging(allocator, target_path, target_entries, staging_b);
+
+    if (count == 0) {
+        std.fs.deleteTreeAbsolute(staging_dir) catch {};
+    }
+
+    return .{ .dir = staging_dir, .count = count };
+}
+
+fn distributePromoteIgnored(
+    allocator: std.mem.Allocator,
+    staging_dir: []const u8,
+    main_path: []const u8,
+    main_entries: []const IgnoredEntry,
+    target_path: []const u8,
+    target_entries: []const IgnoredEntry,
+) !usize {
+    const staging_a = try std.fs.path.join(allocator, &.{ staging_dir, "a" });
+    defer allocator.free(staging_a);
+    const staging_b = try std.fs.path.join(allocator, &.{ staging_dir, "b" });
+    defer allocator.free(staging_b);
+
+    var count: usize = 0;
+    count += try moveStagedEntriesToWorktree(allocator, staging_b, target_entries, main_path);
+    count += try moveStagedEntriesToWorktree(allocator, staging_a, main_entries, target_path);
+
+    std.fs.deleteTreeAbsolute(staging_dir) catch {};
+    return count;
+}
+
+fn moveIgnoredEntriesToStaging(
+    allocator: std.mem.Allocator,
+    source_root: []const u8,
+    entries: []const IgnoredEntry,
+    staging_root: []const u8,
+) !usize {
+    var count: usize = 0;
+    for (entries) |entry| {
+        const source_path = try boundedPath(allocator, source_root, entry.path);
+        defer allocator.free(source_path);
+        const staging_path = try boundedPath(allocator, staging_root, entry.path);
+        defer allocator.free(staging_path);
+
+        if (try existingPathKind(source_path)) |_| {
+            try moveEntry(allocator, source_path, staging_path, entry.directory);
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn moveStagedEntriesToWorktree(
+    allocator: std.mem.Allocator,
+    staging_root: []const u8,
+    entries: []const IgnoredEntry,
+    destination_root: []const u8,
+) !usize {
+    var count: usize = 0;
+    for (entries) |entry| {
+        const staging_path = try boundedPath(allocator, staging_root, entry.path);
+        defer allocator.free(staging_path);
+        const destination_path = try boundedPath(allocator, destination_root, entry.path);
+        defer allocator.free(destination_path);
+
+        if (try existingPathKind(staging_path)) |_| {
+            try moveEntry(allocator, staging_path, destination_path, entry.directory);
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn moveEntry(
+    allocator: std.mem.Allocator,
+    source_path: []const u8,
+    destination_path: []const u8,
+    directory: bool,
+) !void {
+    try fs.ensureParentDir(allocator, destination_path);
+    std.fs.renameAbsolute(source_path, destination_path) catch |err| switch (err) {
+        error.RenameAcrossMountPoints => {
+            const strategy = cow_copy.detect(allocator, source_path);
+            try cow_copy.copyPathWithStrategy(allocator, source_path, destination_path, strategy);
+            if (directory) {
+                try std.fs.deleteTreeAbsolute(source_path);
+            } else {
+                try std.fs.deleteFileAbsolute(source_path);
+            }
+        },
+        else => return err,
+    };
 }
 
 pub fn fastForwardBranchRef(
